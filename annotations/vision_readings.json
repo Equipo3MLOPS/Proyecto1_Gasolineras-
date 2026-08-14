@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "extraction_method": "vision-llm",
+  "extractor": "Fotos HEIC",
+  "extraction_date": "2026-08-14",
+  "currency": "GTQ",
+  "volume_unit": "gallon",
+  "confidence_scale": "0.0 (ilegible) a 1.0 (nitido e inequivoco)",
+  "notes": [
+    "Cada valor trae 'confidence'. El display principal 'Esta Venta' (Q) y 'Galones' son grandes y nitidos.",
+    "Los 4 mini-displays 'Precio por galon' (Diesel/Regular/Super/V-Power) son LCD de 7 segmentos pequenos y a menudo borrosos o cortados.",
+    "El combustible surtido (fuel_pumped_guess) se deduce de Esta_Venta / Galones y se valida contra el precio leido.",
+    "Para reemplazar este archivo por un OCR/visio automatico, basta con implementar otro DisplayReader en src/extract.py que produzca la misma estructura."
+  ],
+  "readings": [
+    {
+      "image_id": "IMG_8271",
+      "esta_venta":  {"value": 150.00, "confidence": 1.00},
+      "galones":     {"value": 3.938,  "confidence": 0.97},
+      "fuel_pumped_guess": "super",
+      "prices": {
+        "diesel":  {"value": 35.59, "confidence": 0.45, "note": ""},
+        "regular": {"value": 37.09, "confidence": 0.80},
+        "super":   {"value": 38.09, "confidence": 0.95},
+        "v_power": {"value": 38.59, "confidence": 0.90}
+      }
+    },
+    {
+      "image_id": "IMG_8286",
+      "esta_venta":  {"value": 150.00, "confidence": 1.00},
+      "galones":     {"value": 3.789,  "confidence": 0.95},
+      "fuel_pumped_guess": "super",
+      "prices": {
+        "diesel":  {"value": 39.59, "confidence": 0.30, "note": ""},
+        "regular": {"value": 38.59, "confidence": 0.55, "note": ""},
+        "super":   {"value": 39.59, "confidence": 0.90},
+        "v_power": {"value": 40.09, "confidence": 0.85}
+      }
+    },
+    {
+      "image_id": "IMG_8304",
+      "esta_venta":  {"value": 150.00, "confidence": 1.00},
+      "galones":     {"value": 3.651,  "confidence": 0.95},
+      "fuel_pumped_guess": "super",
+      "prices": {
+        "diesel":  {"value": 40.29, "confidence": 0.35, "note": ""},
+        "regular": {"value": 40.09, "confidence": 0.75},
+        "super":   {"value": 41.09, "confidence": 0.92},
+        "v_power": {"value": 41.59, "confidence": 0.85}
+      }
+    },
+    {
+      "image_id": "IMG_8322",
+      "esta_venta":  {"value": 150.00, "confidence": 1.00},
+      "galones":     {"value": 3.564,  "confidence": 0.90},
+      "fuel_pumped_guess": "super",
+      "prices": {
+        "diesel":  {"value": 43.19, "confidence": 0.55, "note": ""},
+        "regular": {"value": 41.09, "confidence": 0.85},
+        "super":   {"value": 42.09, "confidence": 0.95},
+        "v_power": {"value": 42.59, "confidence": 0.90}
+      }
+    },
+    {
+      "image_id": "IMG_8325",
+      "esta_venta":  {"value": 150.00, "confidence": 1.00},
+      "galones":     {"value": 3.564,  "confidence": 0.90},
+      "fuel_pumped_guess": "super",
+      "prices": {
+        "diesel":  {"value": 43.19, "confidence": 0.92},
+        "regular": {"value": 41.09, "confidence": 0.92},
+        "super":   {"value": 42.09, "confidence": 0.95},
+        "v_power": {"value": 42.59, "confidence": 0.92}
+      }
+    }
+  ]
+}
