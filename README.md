@@ -52,18 +52,22 @@ Proyecto1_Gasolineras-/
 ├─ annotations/
 │  └─ vision_readings.json           # salida del pase de visión (lecturas + confianza)
 ├─ src/
+│  ├─ __init__.py                    # hace de src/ un paquete instalable
 │  ├─ config.py                      # rutas, dominio y umbrales de calidad
 │  ├─ extract.py     # 01  EXIF + displays          -> artifacts/bronze/
 │  ├─ eda.py         # 02  análisis exploratorio     -> reports/
 │  ├─ transform.py   # 03  limpieza + validación      -> artifacts/silver/
 │  ├─ load.py        # 04  dataset para el modelo      -> db/gasolineras.db + gold/
 │  └─ pipeline.py    #     orquestador de las 4 etapas
+├─ notebooks/
+│  └─ calibracion_hiperparametros.ipynb  # 05  Modeling + Evaluation (CRISP-DM)
 ├─ artifacts/
 │  ├─ bronze/  observations_raw.csv, readings_long.csv   # crudo extraído
 │  ├─ silver/  fuel_prices_clean.csv, fill_ups_clean.csv # limpio + control de calidad
 │  └─ gold/    dataset_precios.csv                        # tabla plana lista para ML
-├─ reports/   eda_report.md + figures/*.png
+├─ reports/   eda_report.md + figures/*.png (incluye pipeline_diagram.html)
 ├─ db/        gasolineras.db          # BASE DE DATOS FINAL (SQLite, 1 tabla)
+├─ pyproject.toml                     # empaquetado (pip install -e .)
 ├─ requirements.txt
 └─ README.md
 ```
@@ -72,7 +76,10 @@ Proyecto1_Gasolineras-/
 
 ## Cómo ejecutarlo
 
+### Opción rápida (sin instalar el paquete)
+
 ```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 python -m pip install -r requirements.txt
 python -m src.pipeline
 ```
@@ -87,6 +94,29 @@ python -m src.pipeline transform load
 
 Todo es **idempotente**: se puede re-ejecutar cuantas veces se quiera; las tablas
 se recrean y los CSV se sobrescriben.
+
+### Opción empaquetada (para compartir con el equipo)
+
+El proyecto se instala como paquete Python vía `pyproject.toml`, así cualquier
+integrante lo corre igual sin depender de `python -m src...` ni de estar parado
+en la raíz del repo:
+
+```bash
+git clone <url-del-repo>
+cd Proyecto1_Gasolineras-
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+gasolineras-pipeline            # corre el pipeline completo
+gasolineras-pipeline --no-eda   # o cualquier combinación de etapas
+```
+
+`pip install -e .` deja el comando `gasolineras-pipeline` disponible como CLI
+(definido en `[project.scripts]` de `pyproject.toml`) y expone `src` como paquete
+importable (`from src import config`) desde cualquier script o notebook.
+
+**Para validar que corre en máquinas distintas** : probar `pip install -e .` y
+`gasolineras-pipeline` corriendo sin errores en cada una.
+
 
 ---
 
