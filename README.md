@@ -68,6 +68,9 @@ Proyecto1_Gasolineras-/
 ├─ reports/   eda_report.md + figures/*.png (incluye pipeline_diagram.html)
 ├─ db/        gasolineras.db          # BASE DE DATOS FINAL (SQLite, 1 tabla)
 ├─ pyproject.toml                     # empaquetado (pip install -e .)
+├─ Dockerfile                         # imagen compartida por los 4 microservicios
+├─ docker-compose.yml                 # orquesta extract/eda/transform/load + volúmenes
+├─ .dockerignore
 ├─ requirements.txt
 └─ README.md
 ```
@@ -232,6 +235,101 @@ FROM precios_combustible WHERE variacion_abs IS NOT NULL ORDER BY fecha;
 
 > La misma tabla se exporta a `artifacts/gold/dataset_precios.csv` para cargarla
 > directo con `pandas.read_csv` en la etapa de modelado.
+
+---
+
+## Contenerización — arquitectura de microservicios (Docker)
+
+### ¿Qué son Docker y Docker Compose?
+
+- **Docker** empaqueta código + dependencias + runtime en una **imagen** inmutable;
+  un **contenedor** es una instancia corriendo de esa imagen, aislada del sistema
+  operativo anfitrión pero mucho más liviana que una máquina virtual (comparte el
+  kernel del host, no virtualiza hardware).
+- **Docker Compose** describe, en un solo archivo YAML declarativo, **varios
+  contenedores relacionados** (servicios, redes, volúmenes) y cómo depende cada uno
+  del otro, para levantarlos todos con un solo comando en vez de `docker run` a mano
+  uno por uno.
+
+### De pipeline monolítico a microservicios
+
+Antes, las 4 etapas (`extract → eda → transform → load`) corrían como **funciones
+Python dentro de un mismo proceso** (`src/pipeline.py`), compartiendo memoria y el
+mismo filesystem local. Ahora cada etapa es su **propio contenedor**, con una sola
+responsabilidad, que se puede construir, versionar y ejecutar de forma
+independiente — la definición de microservicio que aplica a un pipeline **batch**
+(a diferencia de microservicios web, aquí no hay APIs síncronas entre etapas:
+cada servicio corre, escribe su resultado y termina; el siguiente lo recoge).
+
+```
+                 ┌────────────┐
+                 │  extract   │  lee Data/*.HEIC + annotations/*.json
+                 └─────┬──────┘  escribe bronze/*.csv
+                       │ (depends_on: completado con éxito)
+              ┌────────┴────────┐
+              ▼                 ▼
+        ┌──────────┐      ┌───────────┐
+        │   eda     │      │ transform │  lee bronze/*.csv
+        └────┬──────┘      └─────┬─────┘  escribe silver/*.csv
+             │                    │ (depends_on: completado con éxito)
+             ▼                    ▼
+      reports_data          ┌──────────┐
+      (volumen)             │   load   │  lee silver/*.csv
+                             └────┬─────┘  escribe gold/*.csv + db/*.db
+                                  ▼
+                            db_data (volumen)
+
+   artifacts_data (volumen) — compartido por extract / eda / transform / load
+```
+
+Los 4 servicios comparten la **misma imagen** (`Dockerfile` único: Python +
+`requirements.txt` + código de `src/`); lo que cambia entre uno y otro es solo el
+**comando** que corre (`docker-compose.yml`), igual que ya se podía correr
+`python -m src.extract` de forma aislada antes de contenerizar.
+
+### Volúmenes — cómo persiste la data entre contenedores
+
+Cada contenedor tiene su propio filesystem efímero: si `extract` escribiera solo
+"dentro" de su contenedor, esos datos **desaparecerían** al terminar y `transform`
+nunca los vería. Se investigaron las dos formas de persistir datos en Docker:
+
+| Mecanismo | Qué es | Se usó aquí? |
+|---|---|---|
+| **Bind mount** | Monta una carpeta *del host* directo en el contenedor (`-v ./carpeta:/app/carpeta`). Simple, pero acopla el contenedor a rutas específicas del sistema anfitrión. | No — los insumos (`Data/`, `annotations/`) se **copian a la imagen** en el build (`Dockerfile`), no cambian entre corridas. |
+| **Named volume** | Docker crea y administra el almacenamiento (`docker volume create`), identificado por nombre, independiente de cualquier ruta del host. Sobrevive a que el contenedor se borre y se puede **montar en varios contenedores a la vez**. | **Sí** — es el mecanismo que conecta a los 4 servicios entre sí. |
+
+`docker-compose.yml` declara 3 volúmenes nombrados:
+
+- `artifacts_data` → `/app/artifacts` — compartido por `extract`, `eda`, `transform`
+  y `load` (así `transform` lee lo que `extract` escribió, aunque corrieron en
+  contenedores distintos).
+- `db_data` → `/app/db` — la base SQLite final, persistida aunque el contenedor
+  `load` ya haya terminado y sido eliminado.
+- `reports_data` → `/app/reports` — figuras y reporte del EDA.
+
+Se verificó la persistencia real: tras `docker compose up`, un contenedor **nuevo
+y desconectado** de los que generaron los datos (`docker compose run --rm load ...`)
+pudo leer las 20 filas de `db_data` y las 5 figuras de `reports_data` — confirma que
+el volumen, no el contenedor, es quien conserva el estado.
+
+### Cómo correrlo
+
+```bash
+docker compose build          # construye la imagen (una sola vez, o tras cambiar código)
+docker compose up             # corre extract -> (eda + transform) -> load, en orden, y sale
+docker compose down           # borra contenedores y red (los volúmenes quedan)
+docker compose down -v        # borra también los volúmenes (reinicia todo desde cero)
+
+docker volume ls              # ver los volúmenes nombrados creados
+docker compose run --rm --entrypoint python load -c "import sqlite3; ..."  # inspeccionar la db
+```
+
+El orden de ejecución (`extract` primero; `eda` y `transform` en paralelo después;
+`load` al final) lo garantiza `depends_on` con `condition: service_completed_successfully`
+en `docker-compose.yml` — cada servicio espera a que el anterior **termine con
+código 0**, no solo a que "arranque" (que es el `depends_on` por defecto, pensado
+para servicios de larga duración como una base de datos, no para trabajos batch
+como estos). Requiere Docker Compose v2 reciente.
 
 ---
 

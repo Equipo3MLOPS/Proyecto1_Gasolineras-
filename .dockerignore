@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.DS_Store
+artifacts/
+db/
+reports/figures/
+notebooks/.ipynb_checkpoints/
+*.egg-info/

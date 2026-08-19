@@ -1,0 +1,45 @@
+services:
+
+  extract:
+    build: .
+    image: gasolineras-pipeline:latest
+    command: ["-m", "src.extract"]
+    volumes:
+      - artifacts_data:/app/artifacts
+
+  eda:
+    build: .
+    image: gasolineras-pipeline:latest
+    command: ["-m", "src.eda"]
+    depends_on:
+      extract:
+        condition: service_completed_successfully
+    volumes:
+      - artifacts_data:/app/artifacts
+      - reports_data:/app/reports
+
+  transform:
+    build: .
+    image: gasolineras-pipeline:latest
+    command: ["-m", "src.transform"]
+    depends_on:
+      extract:
+        condition: service_completed_successfully
+    volumes:
+      - artifacts_data:/app/artifacts
+
+  load:
+    build: .
+    image: gasolineras-pipeline:latest
+    command: ["-m", "src.load"]
+    depends_on:
+      transform:
+        condition: service_completed_successfully
+    volumes:
+      - artifacts_data:/app/artifacts
+      - db_data:/app/db
+
+volumes:
+  artifacts_data:   # bronze/silver/gold (CSV intermedios) compartidos entre servicios
+  reports_data:     # eda_report.md + figures/*.png generados por el servicio eda
+  db_data:          # gasolineras.db (SQLite), la base de datos final
