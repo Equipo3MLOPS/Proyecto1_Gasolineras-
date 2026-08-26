@@ -350,3 +350,20 @@ como estos). Requiere Docker Compose v2 reciente.
 - **Modelado (ML/DL)**: exportar `v_prices_wide` / `fuel_prices` y aplicar la
   normalización dentro del split de entrenamiento. Con más historia, un modelo de
   serie temporal puede predecir el precio semanal por combustible.
+
+
+---
+
+## Automatización con GitHub Actions
+
+El workflow `.github/workflows/mlops-pipeline.yml` automatiza las etapas de MLOps de los ejercicios del equipo. Se ejecuta cuando hay cambios relevantes en la rama `main`, en cada pull request hacia `main`, semanalmente los lunes a las 06:30 UTC y también bajo demanda desde la pestaña **Actions**.
+
+El job **ETL de gasolineras** instala este proyecto y ejecuta `extract → eda → transform → load`. Después comprueba que existan los CSV de las capas bronze, silver y gold, que el dataset final tenga 20 filas y los cuatro combustibles esperados, que no haya precios nulos y que SQLite contenga el mismo número de registros. Los resultados se publican como un artefacto descargable de la ejecución.
+
+El job **Entrenamiento y evaluación** obtiene `Equipo3MLOPS/MLOPS-Actividad1`, instala el paquete `credit-pipeline` y ejecuta `credit-pipeline-demo`, que realiza extracción, filtrado, separación 80/20, transformación de variables y entrenamiento de KMeans. La salida con el valor de silhouette y la distribución de segmentos queda disponible como evidencia de la ejecución.
+
+Ambos jobs se ejecutan de forma independiente. El job **Resumen del pipeline** solo finaliza correctamente cuando el ETL y el entrenamiento han terminado correctamente; por tanto, cualquier fallo aparece como fallo global del workflow.
+
+Para ejecutar el flujo manualmente, abre **Actions → MLOps - ETL y entrenamiento → Run workflow**. La opción `skip_eda` permite omitir el análisis exploratorio cuando solo se necesita regenerar las capas transformadas y la base de datos.
+
+> El entrenamiento se obtiene siempre desde la rama `main` de `MLOPS-Actividad1`. Por ello, una modificación de ese repositorio puede validarse inmediatamente con `workflow_dispatch` desde este repositorio, aunque no active por sí sola el workflow del repositorio de gasolineras.
