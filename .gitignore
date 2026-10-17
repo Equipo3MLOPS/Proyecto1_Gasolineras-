@@ -12,6 +12,7 @@ artifacts/silver/
 artifacts/gold/
 
 db/*.db
+!db/gasolineras.db
 reports/figures/
 
 mlruns/
