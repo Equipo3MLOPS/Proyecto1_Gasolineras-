@@ -13,3 +13,7 @@ artifacts/gold/
 
 db/*.db
 reports/figures/
+
+mlruns/
+mlartifacts/
+mlflow.db

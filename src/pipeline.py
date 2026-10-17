@@ -3,15 +3,16 @@ from __future__ import annotations
 import argparse
 import time
 
-from . import extract, eda, transform, load
+from . import extract, eda, transform, load, model
 
 STAGES = {
     "extract": extract.run,
     "eda": eda.run,
     "transform": transform.run,
     "load": load.run,
+    "model": model.run,
 }
-DEFAULT_ORDER = ["extract", "eda", "transform", "load"]
+DEFAULT_ORDER = ["extract", "eda", "transform", "load", "model"]
 
 
 def main(argv=None) -> None:
