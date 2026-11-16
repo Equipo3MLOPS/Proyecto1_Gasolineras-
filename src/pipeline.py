@@ -4,6 +4,7 @@ import argparse
 import time
 
 from . import extract, eda, transform, load, model
+from . import config as C
 
 STAGES = {
     "extract": extract.run,
@@ -25,6 +26,7 @@ def main(argv=None) -> None:
     if args.no_eda and "eda" in order:
         order = [s for s in order if s != "eda"]
 
+    print(f"[pipeline] backend={C.BACKEND} | equipo={C.TEAM} | etapas={order}")
     t0 = time.time()
     for stage in order:
         if stage not in STAGES:

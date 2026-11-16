@@ -9,7 +9,7 @@ from typing import Optional
 
 import pandas as pd
 
-from . import config as C
+from . import config as C, io_layer as io
 
 try:
     import pillow_heif
@@ -111,7 +111,7 @@ class DisplayReader:
 
 
 class VisionAnnotationReader(DisplayReader):
-    def __init__(self, annotations_file: Path = C.ANNOTATIONS_FILE):
+    def __init__(self, annotations_file: Path = C.ANNOTATIONS_PATH):
         with open(annotations_file, "r", encoding="utf-8") as f:
             self._doc = json.load(f)
         self._by_id = {r["image_id"]: r for r in self._doc["readings"]}
@@ -141,11 +141,11 @@ def run(reader: Optional[DisplayReader] = None) -> pd.DataFrame:
     C.ensure_dirs()
     reader = reader or VisionAnnotationReader()
 
-    images = sorted(C.RAW_IMAGES_DIR.glob("*.HEIC")) + sorted(
-        C.RAW_IMAGES_DIR.glob("*.heic")
+    images = sorted(C.IMAGES_DIR.glob("*.HEIC")) + sorted(
+        C.IMAGES_DIR.glob("*.heic")
     )
     if not images:
-        raise FileNotFoundError(f"No se encontraron .HEIC en {C.RAW_IMAGES_DIR}")
+        raise FileNotFoundError(f"No se encontraron .HEIC en {C.IMAGES_DIR}")
 
     wide_rows = []
     long_rows = []
@@ -199,10 +199,10 @@ def run(reader: Optional[DisplayReader] = None) -> pd.DataFrame:
     wide = pd.DataFrame(wide_rows).sort_values("ts_local").reset_index(drop=True)
     long = pd.DataFrame(long_rows)
 
-    wide.to_csv(C.BRONZE_OBS, index=False)
-    long.to_csv(C.BRONZE_LONG, index=False)
-    print(f"[extract] {len(wide)} imagenes -> {C.BRONZE_OBS.relative_to(C.ROOT)}")
-    print(f"[extract] {len(long)} lecturas  -> {C.BRONZE_LONG.relative_to(C.ROOT)}")
+    io.write_df(wide, "bronze.observaciones")
+    io.write_df(long, "bronze.lecturas_long")
+    print(f"[extract] {len(wide)} imagenes -> {io.target_name('bronze.observaciones')}")
+    print(f"[extract] {len(long)} lecturas  -> {io.target_name('bronze.lecturas_long')}")
     return wide
 
 

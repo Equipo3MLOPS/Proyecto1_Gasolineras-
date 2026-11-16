@@ -19,6 +19,8 @@ pipeline.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -27,7 +29,7 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from . import config as C
+from . import config as C, io_layer as io
 
 EXPERIMENT = "precio_gasolineras"
 FEATURES_NUM = ["precio_galon", "precio_galon_anterior", "dias_desde_anterior"]
@@ -38,7 +40,7 @@ TARGET = "precio_siguiente"  # precio del próximo período (lo que queremos pre
 
 def _prepare() -> pd.DataFrame:
     """Carga el gold y arma el objetivo: el precio de la próxima visita por combustible."""
-    df = pd.read_csv(C.GOLD_DATASET, parse_dates=["fecha_hora_local"])
+    df = io.read_df("gold.precios_combustible", parse_dates=["fecha_hora_local"])
     df = df.sort_values(["tipo_combustible", "fecha_hora_local"])
     df[TARGET] = df.groupby("tipo_combustible")["precio_galon"].shift(-1)
     # filas usables: con objetivo conocido y con el precio anterior ya calculado
@@ -85,8 +87,17 @@ def run() -> None:
 
     # backend SQLite (MLflow 3.x desaconseja el backend de archivos); los
     # artefactos (modelos) van a ./mlartifacts. Ambos están en .gitignore.
-    mlflow.set_tracking_uri(f"sqlite:///{C.ROOT / 'mlflow.db'}")
-    mlflow.set_experiment(EXPERIMENT)
+    if C.BACKEND == "local":
+        mlflow.set_tracking_uri(f"sqlite:///{C.ROOT / 'mlflow.db'}")
+        mlflow.set_experiment(EXPERIMENT)
+        registered_name = "precio_combustible"
+    else:
+        # En Databricks el tracking es el del workspace; el registro va a UC.
+        mlflow.set_registry_uri("databricks-uc")
+        mlflow.set_experiment(
+            os.environ.get("MLFLOW_EXPERIMENT_PATH", f"/Shared/{EXPERIMENT}")
+        )
+        registered_name = f"{C.UC_CATALOG}.gold.precio_combustible"
     dataset = mlflow.data.from_pandas(data, name="dataset_precios", targets=TARGET)
 
     # --- Corrida 1: baseline ingenuo (precio próximo = precio actual) ---
@@ -112,15 +123,16 @@ def run() -> None:
             pipe,
             name="modelo_precio",
             input_example=Xtr.head(2),
-            registered_model_name="precio_combustible",
+            registered_model_name=registered_name,
             serialization_format="cloudpickle",
         )
 
-    print(f"[model] experimento '{EXPERIMENT}' registrado en {C.ROOT / 'mlflow.db'}")
     print(f"[model] MAE baseline={mae_base:.4f} | MAE ridge={mae_ridge:.4f} "
           f"(n_train={len(train)}, n_valid={len(valid)})")
-    print(f"[model] abrí la interfaz con:  mlflow ui --backend-store-uri "
-          f"sqlite:///{C.ROOT / 'mlflow.db'}")
+    print(f"[model] modelo registrado como '{registered_name}'")
+    if C.BACKEND == "local":
+        print(f"[model] abrí la interfaz con:  mlflow ui --backend-store-uri "
+              f"sqlite:///{C.ROOT / 'mlflow.db'}")
 
 
 if __name__ == "__main__":

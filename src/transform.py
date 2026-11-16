@@ -5,10 +5,10 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-from . import config as C
+from . import config as C, io_layer as io
 
 def _load_bronze() -> pd.DataFrame:
-    df = pd.read_csv(C.BRONZE_OBS, parse_dates=["ts_local", "ts_utc"])
+    df = io.read_df("bronze.observaciones", parse_dates=["ts_local", "ts_utc"])
     return df.sort_values("ts_local").reset_index(drop=True)
 
 
@@ -199,15 +199,15 @@ def run() -> tuple[pd.DataFrame, pd.DataFrame]:
     long = _build_long_prices(df)
     fillups = _build_fillups(df, long)
 
-    long.to_csv(C.SILVER_PRICES, index=False)
-    fillups.to_csv(C.SILVER_FILLUPS, index=False)
+    io.write_df(long, "silver.precios")
+    io.write_df(fillups, "silver.transacciones")
 
     n_imp = int(long["is_imputed"].sum())
     n_rec = int(long["is_reconciled"].sum())
     n_rev = int(long["needs_review"].sum())
-    print(f"[transform] precios limpios -> {C.SILVER_PRICES.relative_to(C.ROOT)} "
+    print(f"[transform] precios limpios -> {io.target_name('silver.precios')} "
           f"({len(long)} filas; {n_rec} reconciliados, {n_imp} imputados, {n_rev} a revisar)")
-    print(f"[transform] transacciones  -> {C.SILVER_FILLUPS.relative_to(C.ROOT)} "
+    print(f"[transform] transacciones  -> {io.target_name('silver.transacciones')} "
           f"({len(fillups)} filas)")
     return fillups, long
 

@@ -18,14 +18,14 @@ try:
 except Exception:  
     _SNS = False
 
-from . import config as C
+from . import config as C, io_layer as io
 
 PRICE_COLS = [f"price_{f}" for f in C.FUEL_TYPES]
 CONF_COLS = [f"price_{f}_conf" for f in C.FUEL_TYPES]
 
 
 def _load_bronze() -> pd.DataFrame:
-    df = pd.read_csv(C.BRONZE_OBS, parse_dates=["ts_local", "ts_utc"])
+    df = io.read_df("bronze.observaciones", parse_dates=["ts_local", "ts_utc"])
     return df.sort_values("ts_local").reset_index(drop=True)
 
 def _fig_confidence_heatmap(df: pd.DataFrame) -> Path:

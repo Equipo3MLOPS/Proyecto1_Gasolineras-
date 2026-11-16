@@ -1,0 +1,104 @@
+# ===========================================================================
+# Databricks Asset Bundle — pipeline medallón de gasolineras (equipo 3)
+# ---------------------------------------------------------------------------
+# Define, como código versionado, el Job que orquesta la medallón en Databricks:
+#     extract → transform → load → model   (una tarea por etapa, en DAG)
+#
+# Despliegue:
+#     databricks bundle validate -p uvg-mlops
+#     databricks bundle deploy   -p uvg-mlops
+#     databricks bundle run medallon_gasolineras -p uvg-mlops
+#
+# El backend de datos se elige con la variable `backend` (uc | s3). Correr la
+# medallón de verdad requiere que el equipo tenga ESCRITURA en sus buckets
+# (ver databricks/README.md).
+# ===========================================================================
+bundle:
+  name: medallon_gasolineras
+
+variables:
+  backend:
+    description: "Backend de datos: 'uc' (tablas Unity Catalog) o 's3' (Delta por ruta al bucket del equipo)."
+    default: uc
+  team:
+    description: "Carpeta del equipo dentro de los buckets (equipo0..equipo7)."
+    default: equipo3
+  node_type_id:
+    description: "Tipo de nodo del cluster del Job. Ajustar si el workspace lo rechaza."
+    default: m5d.large
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-a56ba7f1-976e.cloud.databricks.com
+
+resources:
+  jobs:
+    medallon_gasolineras:
+      name: "Medallón Gasolineras — ${var.team}"
+
+      # Cluster compartido por todas las tareas (single-node: el volumen de datos
+      # es pequeño). Si preferís serverless, quitá job_clusters y job_cluster_key.
+      job_clusters:
+        - job_cluster_key: medallon_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: ${var.node_type_id}
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*]"
+            custom_tags:
+              ResourceClass: SingleNode
+
+      tasks:
+        - task_key: extract
+          job_cluster_key: medallon_cluster
+          notebook_task:
+            notebook_path: ./databricks/run_stage.py
+            base_parameters:
+              stage: extract
+              backend: ${var.backend}
+              team: ${var.team}
+          # pillow-heif no viene en el runtime: necesario para leer .HEIC
+          libraries:
+            - pypi:
+                package: pillow-heif
+
+        - task_key: transform
+          job_cluster_key: medallon_cluster
+          depends_on:
+            - task_key: extract
+          notebook_task:
+            notebook_path: ./databricks/run_stage.py
+            base_parameters:
+              stage: transform
+              backend: ${var.backend}
+              team: ${var.team}
+
+        - task_key: load
+          job_cluster_key: medallon_cluster
+          depends_on:
+            - task_key: transform
+          notebook_task:
+            notebook_path: ./databricks/run_stage.py
+            base_parameters:
+              stage: load
+              backend: ${var.backend}
+              team: ${var.team}
+
+        - task_key: model
+          job_cluster_key: medallon_cluster
+          depends_on:
+            - task_key: load
+          notebook_task:
+            notebook_path: ./databricks/run_stage.py
+            base_parameters:
+              stage: model
+              backend: ${var.backend}
+              team: ${var.team}
+          libraries:
+            - pypi:
+                package: mlflow

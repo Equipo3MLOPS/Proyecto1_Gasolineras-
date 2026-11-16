@@ -5,7 +5,7 @@ import sqlite3
 import numpy as np
 import pandas as pd
 
-from . import config as C
+from . import config as C, io_layer as io
 from .transform import _station_id
 
 SCHEMA = """
@@ -54,8 +54,8 @@ GROUP BY fecha_hora_local;
 
 
 def _build_dataset() -> pd.DataFrame:
-    prices = pd.read_csv(C.SILVER_PRICES, parse_dates=["ts_local"])
-    bronze = pd.read_csv(C.BRONZE_OBS)[["image_id", "latitude", "longitude", "altitude_m"]]
+    prices = io.read_df("silver.precios", parse_dates=["ts_local"])
+    bronze = io.read_df("bronze.observaciones")[["image_id", "latitude", "longitude", "altitude_m"]]
 
     df = prices.merge(bronze, on="image_id", how="left")
 
@@ -96,22 +96,43 @@ def _build_dataset() -> pd.DataFrame:
     return out
 
 
+def _crear_vista_ancha_uc() -> None:
+    """Vista ancha (una columna por combustible) en Unity Catalog,
+    equivalente a la v_precios_ancho de la versión SQLite."""
+    tabla = C.uc_table("gold.precios_combustible")
+    vista = f"{C.UC_CATALOG}.gold.v_precios_ancho"
+    io._spark().sql(f"""
+        CREATE OR REPLACE VIEW {vista} AS
+        SELECT
+            fecha_hora_local,
+            MIN(fecha)       AS fecha,
+            MIN(id_estacion) AS id_estacion,
+            MAX(CASE WHEN tipo_combustible='diesel'  THEN precio_galon END) AS diesel,
+            MAX(CASE WHEN tipo_combustible='regular' THEN precio_galon END) AS regular,
+            MAX(CASE WHEN tipo_combustible='super'   THEN precio_galon END) AS super,
+            MAX(CASE WHEN tipo_combustible='v_power' THEN precio_galon END) AS v_power
+        FROM {tabla}
+        GROUP BY fecha_hora_local
+    """)
+
+
 def run() -> pd.DataFrame:
     C.ensure_dirs()
     dataset = _build_dataset()
 
-    dataset.to_csv(C.GOLD_DATASET, index=False)
+    io.write_df(dataset, "gold.precios_combustible")
 
-    with sqlite3.connect(C.DB_PATH) as conn:
-        conn.executescript(SCHEMA)
-        dataset.to_sql("precios_combustible", conn, if_exists="append", index=False)
-        conn.commit()
-        n = conn.execute("SELECT COUNT(*) FROM precios_combustible").fetchone()[0]
-        nfuel = conn.execute(
-            "SELECT COUNT(DISTINCT tipo_combustible) FROM precios_combustible"
-        ).fetchone()[0]
+    if C.BACKEND == "local":
+        # Copia en SQLite + vista ancha (solo tiene sentido en local).
+        with sqlite3.connect(C.DB_PATH) as conn:
+            conn.executescript(SCHEMA)
+            dataset.to_sql("precios_combustible", conn, if_exists="append", index=False)
+            conn.commit()
+    elif C.BACKEND == "uc":
+        _crear_vista_ancha_uc()
 
-    
+    print(f"[load] dataset gold -> {io.target_name('gold.precios_combustible')} "
+          f"({len(dataset)} filas)")
     return dataset
 
 
