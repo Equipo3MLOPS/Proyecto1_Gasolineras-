@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------
 # Define, como código versionado, el Job que orquesta la medallón en Databricks:
 #     extract → transform → load → model   (una tarea por etapa, en DAG)
+# Las tareas corren en COMPUTE SERVERLESS (este workspace solo admite serverless).
 #
 # Despliegue:
 #     databricks bundle validate -p uvg-mlops
@@ -23,9 +24,6 @@ variables:
   team:
     description: "Carpeta del equipo dentro de los buckets (equipo0..equipo7)."
     default: equipo3
-  node_type_id:
-    description: "Tipo de nodo del cluster del Job. Ajustar si el workspace lo rechaza."
-    default: m5d.large
 
 targets:
   dev:
@@ -39,36 +37,19 @@ resources:
     medallon_gasolineras:
       name: "Medallón Gasolineras — ${var.team}"
 
-      # Cluster compartido por todas las tareas (single-node: el volumen de datos
-      # es pequeño). Si preferís serverless, quitá job_clusters y job_cluster_key.
-      job_clusters:
-        - job_cluster_key: medallon_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: ${var.node_type_id}
-            num_workers: 0
-            spark_conf:
-              spark.databricks.cluster.profile: singleNode
-              spark.master: "local[*]"
-            custom_tags:
-              ResourceClass: SingleNode
-
+      # Sin job_clusters: cada tarea corre en serverless. Las dependencias que no
+      # trae el runtime (pillow-heif para leer .HEIC) se instalan dentro del
+      # notebook con %pip (ver databricks/run_stage.py).
       tasks:
         - task_key: extract
-          job_cluster_key: medallon_cluster
           notebook_task:
             notebook_path: ./databricks/run_stage.py
             base_parameters:
               stage: extract
               backend: ${var.backend}
               team: ${var.team}
-          # pillow-heif no viene en el runtime: necesario para leer .HEIC
-          libraries:
-            - pypi:
-                package: pillow-heif
 
         - task_key: transform
-          job_cluster_key: medallon_cluster
           depends_on:
             - task_key: extract
           notebook_task:
@@ -79,7 +60,6 @@ resources:
               team: ${var.team}
 
         - task_key: load
-          job_cluster_key: medallon_cluster
           depends_on:
             - task_key: transform
           notebook_task:
@@ -90,7 +70,6 @@ resources:
               team: ${var.team}
 
         - task_key: model
-          job_cluster_key: medallon_cluster
           depends_on:
             - task_key: load
           notebook_task:
@@ -99,6 +78,3 @@ resources:
               stage: model
               backend: ${var.backend}
               team: ${var.team}
-          libraries:
-            - pypi:
-                package: mlflow

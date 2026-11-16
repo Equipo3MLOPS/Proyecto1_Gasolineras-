@@ -11,6 +11,16 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install pillow-heif
+
+# COMMAND ----------
+
+# pillow-heif (lectura de .HEIC) no viene en el runtime serverless; tras
+# instalarlo hay que reiniciar el intérprete de Python del notebook.
+dbutils.library.restartPython()  # type: ignore[name-defined]
+
+# COMMAND ----------
+
 import os
 import sys
 from pathlib import Path
