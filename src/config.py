@@ -78,22 +78,10 @@ def ensure_dirs() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
-# ===========================================================================
-# Backend de datos: dónde LEE y ESCRIBE cada etapa de la medallón.
-# ---------------------------------------------------------------------------
-# Se controla con variables de entorno para que el MISMO código corra en:
-#   local -> CSV en artifacts/ + SQLite (comportamiento original del repo)
-#   uc    -> tablas Delta de Unity Catalog (workspace.bronze/silver/gold)
-#   s3    -> tablas Delta por ruta directa al bucket del equipo (s3a://...)
-# La etapa concreta no sabe nada de esto: usa src/io_layer.py.
-# ===========================================================================
-
-BACKEND = os.environ.get("PIPELINE_BACKEND", "local").strip().lower()   # local | uc | s3
+BACKEND = os.environ.get("PIPELINE_BACKEND", "local").strip().lower()   
 TEAM = os.environ.get("PIPELINE_TEAM", "equipo3").strip()
 UC_CATALOG = os.environ.get("PIPELINE_UC_CATALOG", "workspace").strip()
 
-# Carpeta de imágenes de origen (raw). En local es ./Data; en Databricks apunta
-# al Volume que ya tiene las fotos. Sobrescribible con PIPELINE_IMAGES_DIR.
 _DEFAULT_IMAGES_DIR = (
     str(RAW_IMAGES_DIR) if BACKEND == "local" else "/Volumes/workspace/bronze/raw_images"
 )
@@ -106,12 +94,9 @@ _DEFAULT_ANNOTATIONS = (
 )
 ANNOTATIONS_PATH = Path(os.environ.get("PIPELINE_ANNOTATIONS", _DEFAULT_ANNOTATIONS))
 
-# En Databricks las figuras del EDA van al Volume de la capa gold.
 if BACKEND != "local":
     FIGURES_DIR = Path(os.environ.get("PIPELINE_FIGURES_DIR", "/Volumes/workspace/gold/figuras"))
 
-# Buckets S3 por capa (símbolos de la tabla periódica: bronce=CuSn, plata=Ag,
-# oro=Au, más el de imágenes crudas). Sobrescribibles por entorno.
 S3_BUCKETS = {
     "raw":    os.environ.get("S3_BUCKET_RAW",    "cc3105-raw-869227452861-us-east-2-an"),
     "bronze": os.environ.get("S3_BUCKET_BRONZE", "cc3105-cusn-869227452861-us-east-2-an"),
@@ -119,8 +104,6 @@ S3_BUCKETS = {
     "gold":   os.environ.get("S3_BUCKET_GOLD",   "cc3105-au-869227452861-us-east-2-an"),
 }
 
-# Registro de datasets lógicos -> capa, nombre de tabla y CSV local equivalente.
-# Los nombres de tabla coinciden con los que ya se probaron en el workspace.
 DATASETS = {
     "bronze.observaciones":     {"layer": "bronze", "table": "observaciones",       "csv": BRONZE_OBS},
     "bronze.lecturas_long":     {"layer": "bronze", "table": "lecturas_long",       "csv": BRONZE_LONG},
@@ -131,14 +114,11 @@ DATASETS = {
 
 
 def uc_table(dataset: str) -> str:
-    """Nombre completo en Unity Catalog, p.ej. ``workspace.bronze.observaciones``."""
     m = DATASETS[dataset]
     return f"{UC_CATALOG}.{m['layer']}.{m['table']}"
 
 
 def s3_path(dataset: str) -> str:
-    """Ruta Delta directa en el bucket del equipo, p.ej.
-    ``s3a://cc3105-cusn-.../equipo3/bronze/observaciones``."""
     m = DATASETS[dataset]
     bucket = S3_BUCKETS[m["layer"]]
     return f"s3a://{bucket}/{TEAM}/{m['layer']}/{m['table']}"

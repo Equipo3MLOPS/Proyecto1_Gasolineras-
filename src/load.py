@@ -97,8 +97,7 @@ def _build_dataset() -> pd.DataFrame:
 
 
 def _crear_vista_ancha_uc() -> None:
-    """Vista ancha (una columna por combustible) en Unity Catalog,
-    equivalente a la v_precios_ancho de la versión SQLite."""
+
     tabla = C.uc_table("gold.precios_combustible")
     vista = f"{C.UC_CATALOG}.gold.v_precios_ancho"
     io._spark().sql(f"""
@@ -123,7 +122,6 @@ def run() -> pd.DataFrame:
     io.write_df(dataset, "gold.precios_combustible")
 
     if C.BACKEND == "local":
-        # Copia en SQLite + vista ancha (solo tiene sentido en local).
         with sqlite3.connect(C.DB_PATH) as conn:
             conn.executescript(SCHEMA)
             dataset.to_sql("precios_combustible", conn, if_exists="append", index=False)
