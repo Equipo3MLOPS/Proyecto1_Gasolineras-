@@ -1,0 +1,63 @@
+name: Databricks - validar y desplegar bundle
+
+# CI/CD del lado Databricks:
+#   - En PR y push: valida el Asset Bundle (databricks bundle validate).
+#   - Solo en push a main: despliega el bundle (databricks bundle deploy),
+#     o sea "push a main = se actualiza el Job en Databricks".
+#
+# Requiere estos secrets en el repo (Settings → Secrets and variables → Actions):
+#   DATABRICKS_HOST   -> https://dbc-a56ba7f1-976e.cloud.databricks.com
+#   DATABRICKS_TOKEN  -> un Personal Access Token de Databricks
+#     (en Databricks: Settings → Developer → Access tokens → Generate new token)
+#
+# Alternativa "de producción" (service principal OAuth, M2M): en vez de
+# DATABRICKS_TOKEN usar DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "databricks/**"
+      - "databricks.yml"
+      - ".github/workflows/databricks-deploy.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "databricks/**"
+      - "databricks.yml"
+      - ".github/workflows/databricks-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: databricks-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+  validate:
+    name: Validar bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: databricks bundle validate
+        run: databricks bundle validate -t dev
+
+  deploy:
+    name: Desplegar bundle
+    needs: validate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: databricks/setup-cli@main
+      - name: databricks bundle deploy
+        run: databricks bundle deploy -t dev

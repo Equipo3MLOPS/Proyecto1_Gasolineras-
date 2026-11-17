@@ -105,11 +105,11 @@ S3_BUCKETS = {
 }
 
 DATASETS = {
-    "bronze.observaciones":     {"layer": "bronze", "table": "observaciones",       "csv": BRONZE_OBS},
-    "bronze.lecturas_long":     {"layer": "bronze", "table": "lecturas_long",       "csv": BRONZE_LONG},
-    "silver.precios":           {"layer": "silver", "table": "precios",             "csv": SILVER_PRICES},
-    "silver.transacciones":     {"layer": "silver", "table": "transacciones",       "csv": SILVER_FILLUPS},
-    "gold.precios_combustible": {"layer": "gold",   "table": "precios_combustible", "csv": GOLD_DATASET},
+    "bronze.observaciones":     {"layer": "bronze", "table": "observaciones",       "csv": BRONZE_OBS,      "comment": "Bronze: una fila por imagen con EXIF (GPS, timestamp) y lecturas OCR."},
+    "bronze.lecturas_long":     {"layer": "bronze", "table": "lecturas_long",       "csv": BRONZE_LONG,     "comment": "Bronze: lecturas OCR en formato largo (una fila por campo/combustible)."},
+    "silver.precios":           {"layer": "silver", "table": "precios",             "csv": SILVER_PRICES,   "comment": "Silver: precios por combustible limpios, reconciliados e imputados."},
+    "silver.transacciones":     {"layer": "silver", "table": "transacciones",       "csv": SILVER_FILLUPS,  "comment": "Silver: transacciones (venta/galones) con flags de calidad."},
+    "gold.precios_combustible": {"layer": "gold",   "table": "precios_combustible", "csv": GOLD_DATASET,    "comment": "Gold: dataset analitico listo para pronostico (entrada del modelo)."},
 }
 
 

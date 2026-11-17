@@ -53,9 +53,21 @@ def write_df(df: pd.DataFrame, dataset: str) -> None:
         .option("overwriteSchema", "true")
     )
     if C.BACKEND == "uc":
-        writer.saveAsTable(C.uc_table(dataset))
+        full = C.uc_table(dataset)
+        writer.saveAsTable(full)
+        _set_table_comment(full, C.DATASETS[dataset].get("comment"))
     else:  
         writer.format("delta").save(C.s3_path(dataset))
+
+
+def _set_table_comment(full_name: str, comment: str | None) -> None:
+    """Comenta la tabla en Unity Catalog (documenta el linaje). No crítico."""
+    if not comment:
+        return
+    try:
+        _spark().sql(f"COMMENT ON TABLE {full_name} IS '{comment.replace(chr(39), chr(8217))}'")
+    except Exception as exc:  # un comentario no debe tumbar el pipeline
+        print(f"[io] aviso: no se pudo comentar {full_name}: {exc}")
 
 
 def target_name(dataset: str) -> str:
