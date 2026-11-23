@@ -1,20 +1,19 @@
-"""Pruebas del pipeline de datos (backend local).
-
-Son pruebas rápidas sobre la lógica ya probada: una unitaria (identificador de
-estación) y una de integración que corre extract → transform → load sobre las
-fotos de ejemplo del repo y valida el contrato de la capa gold.
-"""
 from __future__ import annotations
 
 import os
 
-# Asegura el backend local antes de importar src (config lee el entorno al importar).
 os.environ.setdefault("PIPELINE_BACKEND", "local")
+os.environ.setdefault("PIPELINE_VISION", "json")
 
-import pandas as pd  # noqa: E402
+from src import config as C  
+from src import extract, transform, load, io_layer as io  
+from src.transform import _station_id  
 
-from src import config as C  # noqa: E402
-from src.transform import _station_id  # noqa: E402
+
+def _limpiar_artefactos():
+    for meta in C.DATASETS.values():
+        if meta["csv"].exists():
+            meta["csv"].unlink()
 
 
 def test_backend_local_por_defecto():
@@ -23,35 +22,42 @@ def test_backend_local_por_defecto():
 
 def test_station_id_estable_y_desconocido():
     a = _station_id(14.6, -90.5)
-    b = _station_id(14.6, -90.5)
-    assert a == b                      # determinista
+    assert a == _station_id(14.6, -90.5)
     assert a.startswith("ST_")
-    assert _station_id(float("nan"), -90.5) == "ST_UNKNOWN"
+    assert _station_id(float("nan"), -90.5) == "ST_DESCONOCIDA"
 
 
-def test_pipeline_local_gold_cumple_contrato():
-    """extract → transform → load produce la gold esperada."""
-    from src import extract, transform, load
+def test_pipeline_capas_cumplen_contrato():
+    _limpiar_artefactos()
+    extract.run()
+    aceptados, rechazados = transform.run()
+    feats = load.run()
 
+    sp = io.read_df("silver.precios")
+    assert len(sp) == 5                                   
+    for col in ["fecha", "combustible", "precio_q_galon", "modalidad",
+                "ubicacion", "foto_origen"]:
+        assert col in sp.columns, f"falta {col} en silver.precios"
+    assert sp["precio_q_galon"].notna().all()
+    assert set(sp["combustible"]).issubset(set(C.FUEL_TYPES))
+    assert len(rechazados) == 0                            
+
+    ps = io.read_df("gold.precio_semanal")
+    assert (ps["precio_min"] <= ps["precio_promedio"]).all()
+    assert (ps["precio_promedio"] <= ps["precio_max"]).all()
+
+    vs = io.read_df("gold.variacion_semanal")
+    assert set(vs["direccion"]).issubset({"sube", "baja", "se_mantiene"})
+
+    assert "direccion_siguiente" in feats.columns
+    assert set(feats["direccion"].dropna()).issubset({"sube", "baja", "se_mantiene"})
+
+
+def test_plata_es_idempotente():
+    _limpiar_artefactos()
     extract.run()
     transform.run()
-    gold = load.run()
-
-    # Contrato de la capa gold (lo que consumirá el pipeline del modelo):
-    assert len(gold) == 20
-    assert set(gold["tipo_combustible"]) == {"diesel", "regular", "super", "v_power"}
-    assert gold["precio_galon"].notna().all()
-    # columnas que el modelo necesita para armar features/target
-    for col in ["precio_galon", "precio_galon_anterior", "dias_desde_anterior",
-                "tipo_combustible", "fecha_hora_local"]:
-        assert col in gold.columns, f"falta la columna {col} en gold"
-
-
-def test_silver_tiene_reconciliados_e_imputados():
-    """La capa silver debe marcar precios reconciliados e imputados."""
-    from src import transform
-
-    fillups, precios = transform.run()
-    assert isinstance(precios, pd.DataFrame) and len(precios) > 0
-    assert int(precios["is_reconciled"].sum()) > 0
-    assert int(precios["is_imputed"].sum()) > 0
+    n1 = len(io.read_df("silver.precios"))
+    transform.run()
+    n2 = len(io.read_df("silver.precios"))
+    assert n1 == n2 == 5

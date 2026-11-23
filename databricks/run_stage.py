@@ -35,13 +35,27 @@ def _param(nombre: str, default: str) -> str:
         return default
 
 
-stage = _param("stage", "extract")
+stage = _param("stage", "bronce")
 backend = _param("backend", "uc")
 team = _param("team", "equipo3")
+vision = _param("vision", "json")          # json | endpoint (lectura de precios en plata)
+images_dir = _param("images_dir", "")      # ruta de las fotos para bronce (S3 o Volume)
 
 # El backend se comunica a src/ vía variables de entorno (ver src/config.py).
 os.environ["PIPELINE_BACKEND"] = backend
 os.environ["PIPELINE_TEAM"] = team
+os.environ["PIPELINE_VISION"] = vision
+if images_dir:
+    os.environ["PIPELINE_IMAGES_DIR"] = images_dir
+
+# Para llamar al endpoint de visión de Databricks desde src/vision.py:
+if vision == "endpoint":
+    try:
+        _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()  # type: ignore[name-defined]
+        os.environ["DATABRICKS_TOKEN"] = _ctx.apiToken().get()
+        os.environ["DATABRICKS_HOST"] = _ctx.apiUrl().get()
+    except Exception as _e:
+        print(f"[run_stage] no pude obtener token/host del contexto: {_e}")
 
 # COMMAND ----------
 
@@ -52,13 +66,12 @@ while not (_raiz / "pyproject.toml").exists() and _raiz != _raiz.parent:
 if str(_raiz) not in sys.path:
     sys.path.insert(0, str(_raiz))
 
-from src import extract, transform, load, model  # noqa: E402
+from src import extract, transform, load  # noqa: E402
 
 ETAPAS = {
-    "extract": extract.run,
-    "transform": transform.run,
-    "load": load.run,
-    "model": model.run,
+    "bronce": extract.run,
+    "plata": transform.run,
+    "oro": load.run,
 }
 
 # COMMAND ----------

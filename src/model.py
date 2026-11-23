@@ -1,138 +1,83 @@
-"""Etapa 5 (opcional) — Modelado con seguimiento de MLflow.
+"""Etapa de MODELO — REFERENCIA para el compañero (no es parte del Job de datos).
 
-Toma el dataset gold (`artifacts/gold/dataset_precios.csv`) y entrena un modelo
-simple para pronosticar el precio del *próximo* período por combustible. Cada
-corrida queda registrada en MLflow (Experiments + Models), de modo que se pueden
-comparar modelos y versionarlos sin planillas sueltas.
+Lee `gold.features_modelo` y entrena un clasificador que predice la DIRECCION
+de la semana siguiente (sube / baja / se_mantiene) por combustible, lo compara
+contra una línea base de persistencia ("se repite la dirección de la semana
+anterior") con validación temporal, y registra todo en MLflow.
 
-Integración deliberadamente mínima de MLflow:
-  - Tracking local en `./mlruns` (sin servidor).
-  - Se loguean parámetros, métrica (MAE) y el dataset de entrada (linaje).
-  - El Pipeline de scikit-learn se empaqueta con `mlflow.sklearn.log_model`.
-
-El preprocesado (StandardScaler) va DENTRO del Pipeline y se ajusta solo con el
-train: cumple la nota de diseño de `transform.py` (la normalización pertenece al
-modelado, no al ETL, para no filtrar el test -> data leakage).
-
-Si MLflow no está instalado, la etapa se omite con un aviso en vez de romper el
-pipeline.
+Es un punto de partida intencionalmente simple: el pipeline del modelo
+(incluida la tabla `gold.predicciones`) lo desarrolla e integra el compañero.
 """
 from __future__ import annotations
 
 import os
 
-import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from . import config as C, io_layer as io
 
-EXPERIMENT = "precio_gasolineras"
-FEATURES_NUM = ["precio_galon", "precio_galon_anterior", "dias_desde_anterior"]
-FEATURES_CAT = ["tipo_combustible"]
-FEATURES = FEATURES_NUM + FEATURES_CAT
-TARGET = "precio_siguiente"  # precio del próximo período (lo que queremos predecir)
+FEATURES = ["variacion_1s", "variacion_2s", "variacion_3s", "variacion_4s",
+            "promedio_movil_4s", "dif_super_diesel"]
+TARGET = "direccion_siguiente"
 
 
 def _prepare() -> pd.DataFrame:
-    """Carga el gold y arma el objetivo: el precio de la próxima visita por combustible."""
-    df = io.read_df("gold.precios_combustible", parse_dates=["fecha_hora_local"])
-    df = df.sort_values(["tipo_combustible", "fecha_hora_local"])
-    df[TARGET] = df.groupby("tipo_combustible")["precio_galon"].shift(-1)
-    # filas usables: con objetivo conocido y con el precio anterior ya calculado
-    return df.dropna(subset=[TARGET, "precio_galon_anterior"]).reset_index(drop=True)
-
-
-def _temporal_split(df: pd.DataFrame):
-    """Split por tiempo (no aleatorio): la última fecha es validación."""
-    corte = df["fecha_hora_local"].max()
-    train = df[df["fecha_hora_local"] < corte]
-    valid = df[df["fecha_hora_local"] == corte]
-    return train, valid
-
-
-def _build_pipeline() -> Pipeline:
-    pre = ColumnTransformer(
-        [
-            ("num", StandardScaler(), FEATURES_NUM),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), FEATURES_CAT),
-        ]
-    )
-    return Pipeline([("pre", pre), ("model", Ridge(alpha=1.0))])
+    df = io.read_df("gold.features_modelo")
+    df = df.dropna(subset=[TARGET]).reset_index(drop=True)
+    df[FEATURES] = df[FEATURES].fillna(0.0)
+    return df.sort_values("semana").reset_index(drop=True)
 
 
 def run() -> None:
     C.ensure_dirs()
-
     try:
         import mlflow
         import mlflow.sklearn
+        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.metrics import accuracy_score
     except ImportError:
-        print("[model] MLflow no está instalado; etapa omitida. "
-              "Instalalo con `pip install mlflow` para registrar experimentos.")
+        print("[modelo] falta mlflow/sklearn; etapa de referencia omitida.")
         return
 
     data = _prepare()
-    if len(data) < 4:
-        print(f"[model] solo {len(data)} filas usables; muy pocas para modelar. Etapa omitida.")
+    if data["semana"].nunique() < 2 or len(data) < 4:
+        print(f"[modelo] datos insuficientes ({len(data)} filas, "
+              f"{data['semana'].nunique()} semanas). Se necesitan más fotos/semanas.")
         return
 
-    train, valid = _temporal_split(data)
-    Xtr, ytr = train[FEATURES], train[TARGET]
-    Xva, yva = valid[FEATURES], valid[TARGET]
+    corte = data["semana"].max()           # validación temporal: última semana
+    train = data[data["semana"] < corte]
+    valid = data[data["semana"] == corte]
+    if train.empty or valid.empty:
+        print("[modelo] no hay suficientes semanas para un split temporal.")
+        return
 
-    # backend SQLite (MLflow 3.x desaconseja el backend de archivos); los
-    # artefactos (modelos) van a ./mlartifacts. Ambos están en .gitignore.
     if C.BACKEND == "local":
         mlflow.set_tracking_uri(f"sqlite:///{C.ROOT / 'mlflow.db'}")
-        mlflow.set_experiment(EXPERIMENT)
-        registered_name = "precio_combustible"
+        mlflow.set_experiment("precio_gasolineras_direccion")
     else:
-        # En Databricks el tracking es el del workspace; el registro va a UC.
         mlflow.set_registry_uri("databricks-uc")
-        mlflow.set_experiment(
-            os.environ.get("MLFLOW_EXPERIMENT_PATH", f"/Shared/{EXPERIMENT}")
-        )
-        registered_name = f"{C.UC_CATALOG}.gold.precio_combustible"
-    dataset = mlflow.data.from_pandas(data, name="dataset_precios", targets=TARGET)
+        mlflow.set_experiment(os.environ.get("MLFLOW_EXPERIMENT_PATH",
+                                             "/Shared/precio_gasolineras_direccion"))
 
-    # --- Corrida 1: baseline ingenuo (precio próximo = precio actual) ---
-    with mlflow.start_run(run_name="baseline_carry_forward"):
-        mlflow.log_param("tipo", "baseline_carry_forward")
-        mlflow.log_input(dataset, context="training")
-        mae_base = mean_absolute_error(yva, valid["precio_galon"])
-        mlflow.log_metric("mae", mae_base)
+    # --- línea base: persistencia (la dirección siguiente = la actual) ---
+    with mlflow.start_run(run_name="baseline_persistencia"):
+        mlflow.log_param("tipo", "baseline_persistencia")
+        acc_base = accuracy_score(valid[TARGET], valid["direccion"].fillna("se_mantiene"))
+        mlflow.log_metric("accuracy", acc_base)
 
-    # --- Corrida 2: modelo Ridge (preprocesado dentro del Pipeline) ---
-    with mlflow.start_run(run_name="ridge"):
-        mlflow.log_param("tipo", "ridge")
-        mlflow.log_param("alpha", 1.0)
+    # --- modelo: árbol de decisión ---
+    with mlflow.start_run(run_name="arbol_decision"):
+        mlflow.log_param("tipo", "decision_tree")
         mlflow.log_param("features", ",".join(FEATURES))
-        mlflow.log_input(dataset, context="training")
+        clf = DecisionTreeClassifier(max_depth=3, random_state=0)
+        clf.fit(train[FEATURES], train[TARGET])
+        acc_model = accuracy_score(valid[TARGET], clf.predict(valid[FEATURES]))
+        mlflow.log_metric("accuracy", acc_model)
+        mlflow.sklearn.log_model(clf, name="modelo_direccion", input_example=train[FEATURES].head(2))
 
-        pipe = _build_pipeline()
-        pipe.fit(Xtr, ytr)
-        mae_ridge = mean_absolute_error(yva, pipe.predict(Xva))
-        mlflow.log_metric("mae", mae_ridge)
-
-        mlflow.sklearn.log_model(
-            pipe,
-            name="modelo_precio",
-            input_example=Xtr.head(2),
-            registered_model_name=registered_name,
-            serialization_format="cloudpickle",
-        )
-
-    print(f"[model] MAE baseline={mae_base:.4f} | MAE ridge={mae_ridge:.4f} "
+    print(f"[modelo] accuracy baseline={acc_base:.3f} | arbol={acc_model:.3f} "
           f"(n_train={len(train)}, n_valid={len(valid)})")
-    print(f"[model] modelo registrado como '{registered_name}'")
-    if C.BACKEND == "local":
-        print(f"[model] abrí la interfaz con:  mlflow ui --backend-store-uri "
-              f"sqlite:///{C.ROOT / 'mlflow.db'}")
 
 
 if __name__ == "__main__":
