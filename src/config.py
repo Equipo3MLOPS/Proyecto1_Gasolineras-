@@ -51,6 +51,18 @@ MODALIDAD_DEFAULT = "no_especificada"
 
 DIRECCION_UMBRAL = 0.10
 
+# --- Modelo de dirección (src/model.py) -----------------------------------
+# Fracción de las semanas más recientes que se reserva para la validación temporal.
+MODEL_TEST_FRACTION = float(os.environ.get("MODEL_TEST_FRACTION", "0.3"))
+# "0" desactiva MLflow (útil en tests).
+MODEL_MLFLOW = os.environ.get("MODEL_MLFLOW", "1").strip() not in ("0", "false", "no")
+MLFLOW_EXPERIMENT = os.environ.get(
+    "MLFLOW_EXPERIMENT_PATH", "/Shared/equipo3_gasolina_direccion"
+).strip()
+# Vacío = automático (sqlite local o el MLflow del workspace dentro de Databricks).
+# "databricks://<perfil>" registra en Databricks desde la Mac.
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "").strip() or None
+
 PRICE_DECIMALS = 2
 STATION_GPS_DECIMALS = 3
 
@@ -131,7 +143,21 @@ DATASETS = {
         "layer": "gold", "table": "features_modelo", "csv": GOLD_DIR / "features_modelo.csv",
         "comment": "Oro: variables por semana y combustible para predecir la direccion de la semana siguiente (entrada del modelo).",
     },
+    "gold.predicciones": {
+        "layer": "gold", "table": "predicciones", "csv": GOLD_DIR / "predicciones.csv",
+        "comment": "Oro: prediccion de la direccion (sube/baja/se_mantiene) por combustible y semana, con su probabilidad y la direccion real cuando se conoce.",
+    },
+    "gold.metricas_modelo": {
+        "layer": "gold", "table": "metricas_modelo", "csv": GOLD_DIR / "metricas_modelo.csv",
+        "comment": "Oro: exactitud de cada modelo candidato y de la linea base en las semanas de validacion temporal.",
+    },
 }
+
+# Modelo registrado en MLflow (Unity Catalog). Vacío = no se registra.
+MLFLOW_REGISTERED_MODEL = os.environ.get(
+    "MLFLOW_REGISTERED_MODEL",
+    "" if BACKEND == "local" else f"{UC_CATALOG}.gold.modelo_direccion",
+).strip() or None
 
 
 COMENTARIOS_COLUMNAS = {
@@ -166,6 +192,35 @@ COMENTARIOS_COLUMNAS = {
         "dif_super_diesel": "Diferencia Q entre super y diesel esa semana (senal de mercado).",
         "direccion": "Direccion de ESTA semana (sube/baja/se_mantiene).",
         "direccion_siguiente": "OBJETIVO del modelo: direccion de la semana SIGUIENTE.",
+    },
+    "gold.predicciones": {
+        "semana": "Semana que se predice (martes que la abre).",
+        "semana_base": "Ultima semana con datos usada para predecir.",
+        "combustible": "Tipo de combustible.",
+        "prediccion": "Direccion predicha: sube / baja / se_mantiene.",
+        "probabilidad": "Probabilidad que el modelo asigna a la direccion predicha (0-1).",
+        "direccion_real": "Direccion observada; vacia si la semana aun no ocurre.",
+        "acierto": "True si la prediccion coincide con la direccion real.",
+        "tipo": "validacion (semanas de prueba) o futura (semana siguiente a la ultima observada).",
+        "modelo": "Nombre del modelo elegido.",
+        "generado_en": "Fecha y hora UTC en que se genero la prediccion.",
+    },
+    "gold.metricas_modelo": {
+        "modelo": "Nombre del modelo o de la linea base.",
+        "es_baseline": "True para la linea base (se repite la direccion de la semana anterior).",
+        "elegido": "True para el modelo que se usa en las predicciones.",
+        "accuracy": "Exactitud en las semanas de validacion temporal (0-1).",
+        "f1_macro": "F1 promedio de las tres clases en validacion.",
+        "accuracy_super": "Exactitud solo para gasolina super.",
+        "accuracy_regular": "Exactitud solo para gasolina regular.",
+        "accuracy_diesel": "Exactitud solo para diesel.",
+        "supera_baseline": "True si la exactitud del modelo es mayor que la de la linea base.",
+        "n_train": "Filas usadas para entrenar.",
+        "n_test": "Filas usadas para validar.",
+        "semanas_test_desde": "Primera semana de validacion.",
+        "semanas_test_hasta": "Ultima semana de validacion.",
+        "mlflow_run_id": "Corrida de MLflow donde quedo registrado.",
+        "generado_en": "Fecha y hora UTC del entrenamiento.",
     },
 }
 

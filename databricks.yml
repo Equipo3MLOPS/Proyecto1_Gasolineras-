@@ -11,6 +11,9 @@ variables:
   vision:
     description: "Lectura de precios en plata: 'endpoint' (modelo de visión de Databricks) o 'json' (anotaciones)."
     default: endpoint
+  test_fraccion:
+    description: "Fracción de semanas más recientes que se usa para la validación temporal del modelo."
+    default: "0.3"
   images_dir:
     description: "Ruta de las fotos que ingesta bronce (external location raw, con subcarpetas por año)."
     default: "s3://cc3105-raw-869227452861-us-east-2-an/img/"
@@ -30,9 +33,9 @@ resources:
       # Sin job_clusters: cada tarea corre en serverless. Las dependencias que no
       # trae el runtime (pillow-heif para leer .HEIC) se instalan dentro del
       # notebook con %pip (ver databricks/run_stage.py).
-      # Job de DATOS: 3 tareas encadenadas bronce -> plata -> oro (medallón).
-      # El modelo de predicción es una etapa aparte (la integra el compañero
-      # consumiendo gold.features_modelo), por eso no va en este Job.
+      # Job: 3 tareas encadenadas bronce -> plata -> oro (medallón). Como pide
+      # el PDF, la tarea oro recalcula las variables, entrena/evalúa el modelo
+      # (MLflow) y escribe gold.predicciones y gold.metricas_modelo.
       tasks:
         - task_key: bronce
           notebook_task:
@@ -63,3 +66,4 @@ resources:
               stage: oro
               backend: ${var.backend}
               team: ${var.team}
+              test_fraccion: ${var.test_fraccion}

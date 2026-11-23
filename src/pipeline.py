@@ -4,20 +4,21 @@ from __future__ import annotations
 import argparse
 import time
 
-from . import extract, transform, load
+from . import extract, transform, load, model
 from . import config as C
 
 STAGES = {
     "bronce": extract.run,
     "plata": transform.run,
     "oro": load.run,
+    "modelo": model.run,
 }
-DEFAULT_ORDER = ["bronce", "plata", "oro"]
+DEFAULT_ORDER = ["bronce", "plata", "oro", "modelo"]
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Pipeline de datos (medallón) de gasolineras")
-    ap.add_argument("stages", nargs="*", help="etapas a correr (bronce, plata, oro)")
+    ap.add_argument("stages", nargs="*", help="etapas a correr (bronce, plata, oro, modelo)")
     args = ap.parse_args(argv)
 
     order = args.stages or DEFAULT_ORDER

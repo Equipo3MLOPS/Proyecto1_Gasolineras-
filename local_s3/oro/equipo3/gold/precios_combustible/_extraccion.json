@@ -1,0 +1,117 @@
+{
+  "tabla": "precios_combustible",
+  "origen": "s3://cc3105-au-869227452861-us-east-2-an/equipo3/gold/precios_combustible",
+  "filas": 20,
+  "extraida": "2026-11-22T02:24:05+00:00",
+  "version": 1,
+  "modificada": "2026-11-18 00:13:04+00:00",
+  "operacion": "SET TBLPROPERTIES",
+  "autor": "jspereira0402@gmail.com",
+  "columnas": [
+    {
+      "nombre": "id",
+      "tipo": "bigint",
+      "comentario": null
+    },
+    {
+      "nombre": "fecha_hora_local",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "fecha",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "anio",
+      "tipo": "int",
+      "comentario": null
+    },
+    {
+      "nombre": "semana_iso",
+      "tipo": "bigint",
+      "comentario": null
+    },
+    {
+      "nombre": "id_estacion",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "estacion",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "pais",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "latitud",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "longitud",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "altitud_m",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "tipo_combustible",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "categoria",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "precio_galon",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "precio_litro",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "moneda",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "calidad_precio",
+      "tipo": "string",
+      "comentario": null
+    },
+    {
+      "nombre": "precio_galon_anterior",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "variacion_abs",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "variacion_pct",
+      "tipo": "double",
+      "comentario": null
+    },
+    {
+      "nombre": "dias_desde_anterior",
+      "tipo": "bigint",
+      "comentario": null
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Runner de una etapa de la medallón
-# MAGIC Ejecuta UNA etapa del pipeline (`extract`, `transform`, `load`, `model`)
+# MAGIC Ejecuta UNA etapa del pipeline (`bronce`, `plata`, `oro`, `modelo`)
 # MAGIC leyendo/escribiendo en el backend configurado (`uc` o `s3`). Está pensado
 # MAGIC para usarse como tarea de un Job (Asset Bundle): una etapa por tarea, de
-# MAGIC modo que el DAG sea extract → transform → load → model.
+# MAGIC modo que el DAG sea bronce → plata → oro (oro incluye el modelo y la predicción).
 # MAGIC
 # MAGIC La lógica vive en `src/` (el mismo código que corre en local); este
 # MAGIC notebook solo elige el backend y llama a `run()`.
@@ -38,12 +38,15 @@ def _param(nombre: str, default: str) -> str:
 stage = _param("stage", "bronce")
 backend = _param("backend", "uc")
 team = _param("team", "equipo3")
+# Fracción de semanas recientes para la validación temporal del modelo.
+test_fraccion = _param("test_fraccion", "0.3")
 vision = _param("vision", "json")          # json | endpoint (lectura de precios en plata)
 images_dir = _param("images_dir", "")      # ruta de las fotos para bronce (S3 o Volume)
 
 # El backend se comunica a src/ vía variables de entorno (ver src/config.py).
 os.environ["PIPELINE_BACKEND"] = backend
 os.environ["PIPELINE_TEAM"] = team
+os.environ["MODEL_TEST_FRACTION"] = test_fraccion
 os.environ["PIPELINE_VISION"] = vision
 if images_dir:
     os.environ["PIPELINE_IMAGES_DIR"] = images_dir
@@ -66,12 +69,21 @@ while not (_raiz / "pyproject.toml").exists() and _raiz != _raiz.parent:
 if str(_raiz) not in sys.path:
     sys.path.insert(0, str(_raiz))
 
-from src import extract, transform, load  # noqa: E402
+from src import extract, transform, load, model  # noqa: E402
+
+
+def _oro_y_prediccion():
+    # Según el PDF, la tarea Oro recalcula las variables y genera la predicción
+    # de la semana siguiente: primero las tablas Oro, luego el modelo.
+    load.run()
+    model.run()
+
 
 ETAPAS = {
     "bronce": extract.run,
     "plata": transform.run,
-    "oro": load.run,
+    "oro": _oro_y_prediccion,
+    "modelo": model.run,     # solo el modelo (sin recalcular Oro)
 }
 
 # COMMAND ----------
