@@ -29,3 +29,6 @@ id_rsa*
 
 # Datos de oro exportados para desarrollo local de la API (regenerables)
 api/local_gold/
+
+# Material privado del equipo (guion de la demo, notas del orador)
+presentacion/privado/

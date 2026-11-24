@@ -14,5 +14,5 @@ cp dist/index.html ../presentacion_jurado.html
 - `VITE_API_URL` dibuja el QR a `/prediccion?combustible=super` en las diapositivas 12 y 14 y la URL de `/docs`.
 - `VITE_REVISION` cambia el % de la revisión manual (por defecto 45.0, diapositiva 4; el detalle está en `REV` de `src/data.js`).
 - Datos: `src/data.js` (métricas, matriz de confusión, predicción) y `src/serie.json` (`gold.precio_semanal`).
-- Diapositivas: `src/slides/a.jsx` (1–5), `b.jsx` (6–10), `c.jsx` (11–15); notas del orador en `src/slides/index.jsx`.
+- Diapositivas: `src/slides/a.jsx` (1–5), `b.jsx` (6–10), `c.jsx` (11–15); notas del orador en `src/slides/notas.js`, archivo local que no se sube al repositorio (sin él, la presentación sale sin notas; `VITE_SIN_NOTAS=1` también las quita).
 - PDF sin animaciones: abrir la página con `#imprimir` al final de la URL e imprimir a PDF (tamaño 1600 × 900 px).

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeckCtx, LedDefs } from "./kit.jsx";
-import { SLIDES } from "./slides/index.jsx";
+import { HAY_NOTAS, SLIDES } from "./slides/index.jsx";
 
 const W = 1600, H = 900;
 const PRINT = typeof location !== "undefined" && location.hash === "#imprimir";
@@ -52,7 +52,7 @@ export default function App() {
       else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); go((c) => c - 1); }
       else if (e.key === "Home") go(0);
       else if (e.key === "End") go(SLIDES.length - 1);
-      else if (e.key.toLowerCase() === "n") setNotes((v) => !v);
+      else if (e.key.toLowerCase() === "n" && HAY_NOTAS) setNotes((v) => !v);
       else if (e.key.toLowerCase() === "o" || e.key === "Escape") setOverview((v) => (e.key === "Escape" ? false : !v));
       else if (e.key.toLowerCase() === "f") {
         try {
@@ -103,8 +103,8 @@ export default function App() {
           <button className="navbtn next" aria-label="Diapositiva siguiente" onClick={() => go((c) => c + 1)}>›</button>
         </div>
       </div>
-      {help && <div className="help">← → para avanzar · F pantalla completa · O índice · N notas</div>}
-      {notes && (
+      {help && <div className="help">← → para avanzar · F pantalla completa · O índice{HAY_NOTAS ? " · N notas" : ""}</div>}
+      {notes && S.notes && (
         <div className="notes" role="note">
           <b>{i + 1}. {S.title}</b> · {S.notes}
         </div>

@@ -74,7 +74,7 @@ con el alias `@champion`. Los resultados y sus limitaciones están en la secció
 ├── tests/                       # pytest: pipeline, modelo y revisión manual
 ├── scripts/descargar_oro.py     # baja las tablas Oro a CSV para entrenar en local
 ├── docs/                        # diagrama, informe, linaje y CRISP-DM
-├── presentacion/                # diapositivas, resumen para el jurado y guion de la demo
+├── presentacion/                # presentación web, resumen para el jurado, QR y respuestas del plan B
 └── .github/workflows/           # CI: valida y despliega el bundle
 ```
 
