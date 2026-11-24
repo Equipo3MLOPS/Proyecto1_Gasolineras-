@@ -1,0 +1,6 @@
+.env
+local_gold/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

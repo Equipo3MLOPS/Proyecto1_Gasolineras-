@@ -1,0 +1,24 @@
+# Despliegue de la API en el Droplet.
+#   docker compose up -d --build
+# El servicio queda corriendo aunque se cierre la sesión SSH (restart: unless-stopped).
+services:
+  api:
+    build: .
+    image: api-gasolineras-equipo3
+    container_name: api-gasolineras
+    env_file: .env
+    environment:
+      # Reenvía al contenedor las credenciales AWS del host (si el server las
+      # tiene como variables de entorno). Si no existen, no pasa nada.
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION
+    # Si el server guarda las credenciales en ~/.aws/credentials (perfil) en vez
+    # de variables de entorno, descomentá este montaje:
+    # volumes:
+    #   - ~/.aws:/root/.aws:ro
+    ports:
+      # Puerto del equipo en el Droplet (equipo3 -> 8003 por defecto) : puerto interno.
+      - "${API_PORT:-8003}:8000"
+    restart: unless-stopped
