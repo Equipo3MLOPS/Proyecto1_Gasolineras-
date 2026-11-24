@@ -1,0 +1,300 @@
+# Plan B: respuestas reales de la API, para mostrarlas sin conexión
+# Servidor: http://165.22.137.8:8003 · consultadas el 24 de noviembre de 2026, 11:56 (hora de Guatemala)
+# Mismas consultas que api/tests/consultas_api.sh, hechas desde un navegador fuera del servidor.
+
+== GET /health ==
+{
+  "status": "ok",
+  "gold_mode": "databricks",
+  "predicciones": 32
+}
+
+== GET /precios/actual ==
+{
+  "precios": [
+    {
+      "combustible": "diesel",
+      "semana": "2026-10-06",
+      "precio_promedio": 34.89,
+      "precio_min": 34.89,
+      "precio_max": 34.89
+    },
+    {
+      "combustible": "regular",
+      "semana": "2026-09-29",
+      "precio_promedio": 34.89,
+      "precio_min": 34.89,
+      "precio_max": 34.89
+    },
+    {
+      "combustible": "super",
+      "semana": "2026-11-03",
+      "precio_promedio": 32.19,
+      "precio_min": 32.19,
+      "precio_max": 32.19
+    },
+    {
+      "combustible": "v_power",
+      "semana": "2026-09-15",
+      "precio_promedio": 44.58,
+      "precio_min": 44.58,
+      "precio_max": 44.58
+    }
+  ]
+}
+
+== GET /precios?combustible=super&limit=5 ==
+{
+  "total": 44,
+  "mostrados": 5,
+  "limit": 5,
+  "precios": [
+    {
+      "semana": "2022-12-27",
+      "anio": 2022,
+      "semana_iso": 52,
+      "combustible": "super",
+      "precio_promedio": 32.49,
+      "precio_min": 32.49,
+      "precio_max": 32.49,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2023-01-10",
+      "anio": 2023,
+      "semana_iso": 2,
+      "combustible": "super",
+      "precio_promedio": 33.99,
+      "precio_min": 33.99,
+      "precio_max": 33.99,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2023-01-24",
+      "anio": 2023,
+      "semana_iso": 4,
+      "combustible": "super",
+      "precio_promedio": 35.69,
+      "precio_min": 35.69,
+      "precio_max": 35.69,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2023-03-14",
+      "anio": 2023,
+      "semana_iso": 11,
+      "combustible": "super",
+      "precio_promedio": 32.99,
+      "precio_min": 32.99,
+      "precio_max": 32.99,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2023-07-18",
+      "anio": 2023,
+      "semana_iso": 29,
+      "combustible": "super",
+      "precio_promedio": 34.79,
+      "precio_min": 34.79,
+      "precio_max": 34.79,
+      "n_observaciones": 1
+    }
+  ]
+}
+
+== GET /precios?combustible=diesel&desde=2026-01-01&hasta=2026-12-31&limit=5 ==
+{
+  "total": 6,
+  "mostrados": 5,
+  "limit": 5,
+  "precios": [
+    {
+      "semana": "2026-01-20",
+      "anio": 2026,
+      "semana_iso": 4,
+      "combustible": "diesel",
+      "precio_promedio": 26.89,
+      "precio_min": 26.89,
+      "precio_max": 26.89,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2026-03-31",
+      "anio": 2026,
+      "semana_iso": 14,
+      "combustible": "diesel",
+      "precio_promedio": 40.49,
+      "precio_min": 40.49,
+      "precio_max": 40.49,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2026-06-16",
+      "anio": 2026,
+      "semana_iso": 25,
+      "combustible": "diesel",
+      "precio_promedio": 33.85,
+      "precio_min": 33.85,
+      "precio_max": 33.85,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2026-06-23",
+      "anio": 2026,
+      "semana_iso": 26,
+      "combustible": "diesel",
+      "precio_promedio": 32.14,
+      "precio_min": 32.14,
+      "precio_max": 32.14,
+      "n_observaciones": 1
+    },
+    {
+      "semana": "2026-08-25",
+      "anio": 2026,
+      "semana_iso": 35,
+      "combustible": "diesel",
+      "precio_promedio": 40.6,
+      "precio_min": 40.6,
+      "precio_max": 40.6,
+      "n_observaciones": 1
+    }
+  ]
+}
+
+== GET /prediccion ==
+{
+  "predicciones": [
+    {
+      "combustible": "diesel",
+      "semana": "2026-10-13",
+      "prediccion": "baja",
+      "probabilidad": 0.489,
+      "modelo": "bosque_aleatorio"
+    },
+    {
+      "combustible": "regular",
+      "semana": "2026-10-06",
+      "prediccion": "sube",
+      "probabilidad": 0.5894,
+      "modelo": "bosque_aleatorio"
+    },
+    {
+      "combustible": "super",
+      "semana": "2026-11-10",
+      "prediccion": "baja",
+      "probabilidad": 0.3679,
+      "modelo": "bosque_aleatorio"
+    },
+    {
+      "combustible": "v_power",
+      "semana": "2026-09-22",
+      "prediccion": "baja",
+      "probabilidad": 0.5067,
+      "modelo": "bosque_aleatorio"
+    }
+  ]
+}
+
+== GET /prediccion?combustible=super ==
+{
+  "combustible": "super",
+  "semana": "2026-11-10",
+  "prediccion": "baja",
+  "probabilidad": 0.3679,
+  "modelo": "bosque_aleatorio"
+}
+
+== GET /modelo/metricas ==
+{
+  "resumen": {
+    "modelo_elegido": "bosque_aleatorio",
+    "accuracy_elegido": 0.4286,
+    "accuracy_baseline": 0.3929,
+    "supera_baseline": true,
+    "n_test": 28
+  },
+  "modelos": [
+    {
+      "modelo": "baseline_persistencia",
+      "es_baseline": true,
+      "elegido": false,
+      "accuracy": 0.3929,
+      "f1_macro": 0.2485,
+      "accuracy_super": 0.4118,
+      "accuracy_regular": 0.3333,
+      "accuracy_diesel": 0.25,
+      "supera_baseline": null,
+      "n_train": 71,
+      "n_test": 28,
+      "semanas_test_desde": "2026-01-27",
+      "semanas_test_hasta": "2026-10-27",
+      "mlflow_run_id": "18377110ed284711a85a98ff1eead404",
+      "generado_en": "2026-11-24T15:07:19+00:00",
+      "cv_accuracy": null,
+      "cv_accuracy_std": null,
+      "cv_folds": null
+    },
+    {
+      "modelo": "regresion_logistica",
+      "es_baseline": false,
+      "elegido": false,
+      "accuracy": 0.3929,
+      "f1_macro": 0.2593,
+      "accuracy_super": 0.3529,
+      "accuracy_regular": 0.3333,
+      "accuracy_diesel": 0.75,
+      "supera_baseline": "false",
+      "n_train": 71,
+      "n_test": 28,
+      "semanas_test_desde": "2026-01-27",
+      "semanas_test_hasta": "2026-10-27",
+      "mlflow_run_id": "796e342b47c44379be3847112385dab0",
+      "generado_en": "2026-11-24T15:07:19+00:00",
+      "cv_accuracy": 0.434,
+      "cv_accuracy_std": 0.0704,
+      "cv_folds": 4.0
+    },
+    {
+      "modelo": "arbol_decision",
+      "es_baseline": false,
+      "elegido": false,
+      "accuracy": 0.3571,
+      "f1_macro": 0.25,
+      "accuracy_super": 0.4118,
+      "accuracy_regular": 0.3333,
+      "accuracy_diesel": 0.25,
+      "supera_baseline": "false",
+      "n_train": 71,
+      "n_test": 28,
+      "semanas_test_desde": "2026-01-27",
+      "semanas_test_hasta": "2026-10-27",
+      "mlflow_run_id": "73b19e28a1ac4b4d8024d61e64a6c922",
+      "generado_en": "2026-11-24T15:07:19+00:00",
+      "cv_accuracy": 0.445,
+      "cv_accuracy_std": 0.1152,
+      "cv_folds": 4.0
+    },
+    {
+      "modelo": "bosque_aleatorio",
+      "es_baseline": false,
+      "elegido": true,
+      "accuracy": 0.4286,
+      "f1_macro": 0.2949,
+      "accuracy_super": 0.4118,
+      "accuracy_regular": 0.6667,
+      "accuracy_diesel": 0.5,
+      "supera_baseline": "true",
+      "n_train": 71,
+      "n_test": 28,
+      "semanas_test_desde": "2026-01-27",
+      "semanas_test_hasta": "2026-10-27",
+      "mlflow_run_id": "10dd1035e7e74064880a344ef3f20d72",
+      "generado_en": "2026-11-24T15:07:19+00:00",
+      "cv_accuracy": 0.4604,
+      "cv_accuracy_std": 0.0301,
+      "cv_folds": 4.0
+    }
+  ]
+}
+
+Swagger en http://165.22.137.8:8003/docs (captura en presentacion/capturas/api_docs.jpg)

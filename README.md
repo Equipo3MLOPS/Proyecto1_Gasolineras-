@@ -1,369 +1,191 @@
-# Pipeline de datos de gasolineras (fotos de surtidor → SQLite)
+# Predicción del precio de la gasolina en Guatemala · Equipo 3
 
-Pipeline **batch + ETL** que convierte fotos crudas de un surtidor de gasolina en
-un dataset limpio de **series de tiempo de precios**, listo para alimentar un
-modelo de ML/DL.
+Proyecto final de CC3105 (UVG). Un pipeline de punta a punta convierte fotos de displays de surtidores en
+precios limpios, calcula indicadores semanales y predice si el precio de cada combustible **sube, baja o se
+mantiene** la semana siguiente. Los resultados se publican en una API REST.
 
-**Objetivo:** pronosticar el precio de cada combustible en el tiempo para responder
-la problemática de las gasolineras: **cuánto y cuándo comprar** combustible para su
-inventario. Todo el diseño de la base apunta a eso.
+- **Diagrama de arquitectura:** [`docs/arquitectura.png`](docs/arquitectura.png) · fuente editable
+  [`docs/arquitectura.drawio`](docs/arquitectura.drawio) (se abre en [diagrams.net](https://app.diagrams.net))
+- **Informe técnico:** [`docs/informe.pdf`](docs/informe.pdf) (fuente en `docs/informe.docx`)
+- **Presentación para el jurado:** [`presentacion/presentacion_jurado.html`](presentacion/presentacion_jurado.html)
+  (página web animada; versión PDF en [`presentacion_jurado.pdf`](presentacion/presentacion_jurado.pdf))
+  y resumen de una página [`presentacion/resumen_jurado.pdf`](presentacion/resumen_jurado.pdf)
+- **API en línea:** [`http://165.22.137.8:8003`](http://165.22.137.8:8003/docs) · Swagger en `/docs`
+- **Job de Databricks:** «Medallón Gasolineras — equipo3», workspace `dbc-a56ba7f1-976e`
 
-Fuente: 5 fotos `.HEIC` de un surtidor **Shell** (Gilbarco Veeder-Root) tomadas con
-un iPhone 14 en **Guatemala** (deducido por GPS; moneda **Quetzal, GTQ**, combustible
-vendido por **galón**), entre el 9 y el 30 de julio de 2026.
+**Integrantes:** Jose Santiago Pereira · Nancy Mazariegos · Hugo Rivas · Giovanni Santos · Alexis Mesias
 
-De cada foto se extrae:
+![Arquitectura](docs/arquitectura.png)
 
-- **Metadatos EXIF** (100% automático): fecha/hora, GPS (lat/lon/altitud), rumbo, cámara.
-- **Displays del surtidor** (visión con puntaje de confianza):
-  - `Esta Venta` — dinero surtido (Q)
-  - `Galones` — volumen surtido
-  - 4 precios `Precio por galón`: **Diesel, Regular, Super, V-Power**
+## Cómo funciona
 
----
-
-## ¿Por qué batch + ETL? (y no streaming)
-
-| Criterio | Este caso | Conclusión |
+| Capa | Qué hace | Dónde vive |
 |---|---|---|
-| Volumen / frecuencia | Pocas fotos, llegada periódica (semanal) | **Batch**: no hay flujo continuo que justifique streaming |
-| Latencia requerida | Ninguna; el análisis es posterior | **Batch**: procesar en lotes idempotentes |
-| Transformación | Pesada (imagen→texto→validación→normalización) | **ETL** en etapas re-ejecutables |
-| Salida | Pequeña y estructurada | **SQLite**: cero servidor, un archivo, ideal para ML/DL |
+| Fotos | El catedrático sube fotos `.HEIC` de surtidores Shell (solo lectura) | `s3://cc3105-raw-…/img/` |
+| **Bronce** | Lee las fotos con Spark `binaryFile` y las guarda con columnas de auditoría. `MERGE` por `path`: una segunda carga no duplica fotos | `workspace.bronze.fotos_precios` → `s3://cc3105-cusn-…/equipo3/bronze/` |
+| **Plata** | El endpoint de visión `databricks-llama-4-maverick` lee venta y galones; precio efectivo = venta ÷ galones. Tres reglas de calidad y cuarentena | `workspace.silver.precios`, `silver.precios_rejected` → `s3://cc3105-ag-…/equipo3/silver/` |
+| **Oro** | Precio semanal (martes a lunes), variación y dirección (±Q0.10), variables, modelo y predicción | `workspace.gold.*` → `s3://cc3105-au-…/equipo3/gold/` |
+| Modelo | Logística, árbol y bosque contra la línea base de persistencia, con validación temporal y MLflow | `src/model.py` → `gold.predicciones`, `gold.metricas_modelo` |
+| API | FastAPI en Docker en el Droplet; lee solo Oro | `api/` |
 
-**Matiz importante:** como la fuente son imágenes, la extracción es en realidad
-**imagen→texto (OCR/visión)**, así que el flujo es *ELT en la capa cruda + ETL después*.
-Por eso se organiza en capas estilo **medallion**, que hace todo auditable y
-re-ejecutable **sin volver a fotografiar**:
+Databricks llega a cada bucket por una *external location* de Unity Catalog. Todas las tablas Oro tienen
+`COMMENT` en la tabla y en cada columna (textos en `src/config.py`).
+
+### Reglas de calidad (Plata)
+
+1. Precio entre Q20 y Q60 por galón (también atrapa montos ilegibles).
+2. Combustible dentro del catálogo: `diesel`, `regular`, `super`, `v_power`.
+3. Fecha conocida y no futura.
+
+Las filas que fallan van a `silver.precios_rejected` con el motivo. La exactitud de la extracción se midió a mano
+en 20 fotos al azar (semilla 42) con la hoja de [`pipelines/revision_fotos_hoja.py`](pipelines/revision_fotos_hoja.py):
+**9 de 20 sin ningún error (45.0 %)**; los montos salieron bien en 18 de 20, pero 10 fotos de súper quedaron
+asignadas a otro combustible. Detalle en [`revision_manual/resultado.md`](revision_manual/resultado.md).
+El notebook [`pipelines/revision_manual_plata.py`](pipelines/revision_manual_plata.py) hace la misma revisión y
+guarda el resultado en `silver.revision_manual`.
+
+### Modelo
+
+Se predice `direccion_siguiente` por combustible con regresión logística, árbol de decisión y bosque aleatorio
+(scikit-learn, `class_weight="balanced"`). La validación es temporal: las semanas más recientes (30 %) son
+prueba y además hay validación cruzada temporal de 4 cortes, que decide el modelo elegido. La línea base es
+«se repite la dirección de la semana anterior». Cada corrida queda en MLflow
+(`/Shared/equipo3_gasolina_direccion`) y el modelo elegido se registra como `workspace.gold.modelo_direccion`
+con el alias `@champion`. Los resultados y sus limitaciones están en la sección 4 del informe.
+
+## Estructura del repositorio
 
 ```
-  Data/ (HEIC)  ──►  BRONZE  ──►  SILVER  ──►  GOLD (SQLite)
-   crudo          extraído,      limpio,       normalizado,
-                  con confianza  validado      listo para modelar
+├── README.md
+├── databricks.yml               # Asset Bundle: Job de 3 tareas, programación y alertas (destinos dev y prod)
+├── databricks/run_stage.py      # notebook que ejecuta una etapa (bronce | plata | oro) según el widget `stage`
+├── src/                         # lógica del pipeline, la misma en local y en Databricks
+│   ├── extract.py               #   Bronce
+│   ├── vision.py, transform.py  #   Plata: lectura con visión y reglas de calidad
+│   ├── load.py                  #   Oro: indicadores y variables
+│   ├── model.py                 #   modelo, MLflow y predicción
+│   ├── io_layer.py, config.py   #   lectura/escritura por backend y configuración
+├── pipelines/
+│   ├── revision_manual_plata.py # notebook de revisión manual de 20 fotos
+│   └── revision_fotos_hoja.py   # genera la hoja HTML con las 20 fotos para revisarlas
+├── revision_manual/             # resultado de la revisión manual (45.0 %) y correcciones
+├── api/                         # API FastAPI + Dockerfile + docker-compose + .env.example
+│   └── tests/consultas_api.sh   # pruebas de usuario final con curl
+├── tests/                       # pytest: pipeline, modelo y revisión manual
+├── scripts/descargar_oro.py     # baja las tablas Oro a CSV para entrenar en local
+├── docs/                        # diagrama, informe, linaje y CRISP-DM
+├── presentacion/                # diapositivas, resumen para el jurado y guion de la demo
+└── .github/workflows/           # CI: valida y despliega el bundle
 ```
 
----
+`Dockerfile` y `docker-compose.yml` de la raíz son del pipeline local del proyecto 1; su documentación quedó en
+[`docs/README_proyecto1.md`](docs/README_proyecto1.md).
 
-## Estructura del proyecto
+## Cómo reproducirlo
 
-```
-Proyecto1_Gasolineras-/
-├─ Data/                              # fotos .HEIC crudas (fuente, no se toca)
-├─ annotations/
-│  └─ vision_readings.json           # salida del pase de visión (lecturas + confianza)
-├─ src/
-│  ├─ __init__.py                    # hace de src/ un paquete instalable
-│  ├─ config.py                      # rutas, dominio y umbrales de calidad
-│  ├─ extract.py     # 01  EXIF + displays          -> artifacts/bronze/
-│  ├─ eda.py         # 02  análisis exploratorio     -> reports/
-│  ├─ transform.py   # 03  limpieza + validación      -> artifacts/silver/
-│  ├─ load.py        # 04  dataset para el modelo      -> db/gasolineras.db + gold/
-│  └─ pipeline.py    #     orquestador de las 4 etapas
-├─ notebooks/
-│  └─ calibracion_hiperparametros.ipynb  # 05  Modeling + Evaluation (CRISP-DM)
-├─ artifacts/
-│  ├─ bronze/  observations_raw.csv, readings_long.csv   # crudo extraído
-│  ├─ silver/  fuel_prices_clean.csv, fill_ups_clean.csv # limpio + control de calidad
-│  └─ gold/    dataset_precios.csv                        # tabla plana lista para ML
-├─ reports/   eda_report.md + figures/*.png (incluye pipeline_diagram.html)
-├─ db/        gasolineras.db          # BASE DE DATOS FINAL (SQLite, 1 tabla)
-├─ pyproject.toml                     # empaquetado (pip install -e .)
-├─ Dockerfile                         # imagen compartida por los 4 microservicios
-├─ docker-compose.yml                 # orquesta extract/eda/transform/load + volúmenes
-├─ .dockerignore
-├─ requirements.txt
-└─ README.md
-```
+### 1. Requisitos
 
----
+- Python 3.12+ y `make`.
+- [Databricks CLI](https://docs.databricks.com/dev-tools/cli/) con un perfil para el workspace del equipo:
 
-## Cómo ejecutarlo
+  ```bash
+  databricks auth login --host https://dbc-a56ba7f1-976e.cloud.databricks.com --profile uvg-mlops
+  ```
 
-### Opción rápida (sin instalar el paquete)
+- Acceso a las external locations de los buckets (`xloc-raw`, `xloc-cusn`, `xloc-ag`, `xloc-au`); ver
+  [`databricks/acceso_buckets.md`](databricks/acceso_buckets.md).
+
+### 2. Desplegar y correr el Job en Databricks
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-python -m pip install -r requirements.txt
-python -m src.pipeline
+databricks bundle validate -t prod -p uvg-mlops
+databricks bundle deploy   -t prod -p uvg-mlops      # Job con la programación de los martes ACTIVA
+databricks bundle run medallon_gasolineras -t prod -p uvg-mlops
 ```
 
-Etapas individuales o combinaciones:
+- El Job tiene 3 tareas encadenadas **bronce → plata → oro**; la tarea oro recalcula las tablas, entrena el
+  modelo y escribe la predicción de la semana siguiente.
+- Parámetros (widgets): `stage`, `backend` (`uc` o `s3`), `team`, `vision` (`endpoint` o `json`),
+  `images_dir` y `test_fraccion`. Se cambian sin tocar código, por ejemplo
+  `--var="test_fraccion=0.3"`.
+- Programación: cada martes a las 06:00 (America/Guatemala). Si una tarea falla, llega un correo a
+  `alert_email`.
+- El destino `dev` (por defecto) antepone `[dev usuario]` al nombre del Job y **pausa** la programación; para
+  la entrega se despliega `-t prod`.
+- Cómputo: el workspace es Databricks Free Edition, que solo ofrece serverless. Las tareas corren en
+  serverless (no hay cluster interactivo ni job cluster que configurar) y `pillow-heif` se instala con `%pip` en
+  `run_stage.py`. La comparación de costos entre tipos de cluster está en la sección 5 del informe.
+
+### 3. Entrenar el modelo en local (opcional)
 
 ```bash
-python -m src.extract            # solo extracción
-python -m src.pipeline --no-eda  # todo menos el EDA
-python -m src.pipeline transform load
+make venv-modelo          # crea .venv-oro con pandas, scikit-learn, mlflow y databricks-sdk
+make modelo-local         # baja Oro desde Databricks y entrena/predice en local (MLflow en sqlite)
+make mlflow-ui            # http://127.0.0.1:5001
+make modelo-databricks    # entrena en local y registra todo en el MLflow del workspace
 ```
 
-Todo es **idempotente**: se puede re-ejecutar cuantas veces se quiera; las tablas
-se recrean y los CSV se sobrescriben.
-
-### Opción empaquetada (para compartir con el equipo)
-
-El proyecto se instala como paquete Python vía `pyproject.toml`, así cualquier
-integrante lo corre igual sin depender de `python -m src...` ni de estar parado
-en la raíz del repo:
+### 4. Pruebas
 
 ```bash
-git clone <url-del-repo>
-cd Proyecto1_Gasolineras-
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
-gasolineras-pipeline            # corre el pipeline completo
-gasolineras-pipeline --no-eda   # o cualquier combinación de etapas
+pip install -e ".[dev]"
+pytest -q                 # pipeline, modelo e idempotencia de Plata, lógica de la revisión manual
 ```
 
-`pip install -e .` deja el comando `gasolineras-pipeline` disponible como CLI
-(definido en `[project.scripts]` de `pyproject.toml`) y expone `src` como paquete
-importable (`from src import config`) desde cualquier script o notebook.
+## API en el Droplet
 
-**Para validar que corre en máquinas distintas** : probar `pip install -e .` y
-`gasolineras-pipeline` corriendo sin errores en cada una.
+Endpoints (detalle en [`api/README.md`](api/README.md) y en Swagger, `/docs`):
 
-
----
-
-## Etapa 1 — Extracción (la estrategia para valores dudosos)
-
-El EXIF se lee en Python puro con `pillow-heif`. Los valores del display se leen a
-través de una interfaz **intercambiable**:
-
-```python
-class DisplayReader:
-    def read(self, image_id, path) -> DisplayReading: ...
-
-class VisionAnnotationReader(DisplayReader):   # implementación por defecto
-    # lee annotations/vision_readings.json (salida del pase de visión)
-```
-
-Cada valor trae un **puntaje de confianza (0–1)**. Los mini-displays de 7 segmentos
-son pequeños/borrosos, así que la confianza captura explícitamente **qué tan seguro
-es cada número**. Para automatizar la lectura basta con implementar otro
-`DisplayReader` (Tesseract, EasyOCR, un modelo de visión por API…) que devuelva la
-misma estructura — el resto del pipeline no cambia.
-
-### La red de seguridad: reconciliación `venta = galones × precio`
-
-Es la identidad física del surtidor. Con dos de los tres valores se deduce el
-tercero. El **precio efectivo = `Esta_Venta / Galones`** identifica el combustible
-surtido y **valida/corrige** su precio leído. En estas 5 fotos el residual máximo
-fue **0.0046 Q/galón** → el combustible surtido fue **Super** en todas, y su precio
-queda validado con total confianza aunque el display estuviera borroso.
-
----
-
-## Etapa 2 — EDA
-
-`src/eda.py` analiza la capa bronze **sin modificarla** y produce
-[`reports/eda_report.md`](reports/eda_report.md) + 4 figuras:
-
-1. Heatmap de confianza por precio (qué lecturas caen bajo el umbral).
-2. Reconciliación: precio efectivo vs Super leído + residuales (control de calidad).
-3. Evolución temporal de precios (marca las lecturas de baja confianza).
-4. **Variación de precio entre visitas** — señal directa de *cuándo comprar*.
-5. **Mapa de calor de correlación** entre combustibles — se mueven casi en bloque
-   (regular/super/v_power ≈ 1.00), así que basta pronosticar uno y derivar el resto.
-
-Las decisiones de limpieza del EDA son las que implementa la etapa 3.
-Con solo 5 observaciones, un histograma de distribución no es informativo; por eso
-el EDA prioriza tendencia, variación y correlación (más útiles para el objetivo).
-
----
-
-## Etapa 3 — Transformación (limpieza)
-
-Aplicada **en orden de confianza**, sin borrar nada (todo se marca con banderas):
-
-1. **Reconciliación** — el precio del combustible surtido se fija con
-   `venta/galones` (el número más preciso). `status = reconciled`.
-2. **Lecturas confiables** (confianza ≥ `0.70`) → se conservan. `status = trusted`.
-3. **Nulos** (confianza < `0.70`) → se vuelven faltantes y se **imputan** con esta
-   prioridad, marcando `is_imputed` y el método:
-   - `interp_time` — interpolación temporal entre dos anclas confiables
-   - `weak_fallback` — si no hay dos anclas, se usa la lectura débil en rango
-   - `carry` — si solo hay un ancla, se arrastra la más cercana
-4. **Atípicos** → se **marcan** (no se eliminan):
-   - `is_range_outlier` (rango de dominio), `is_iqr_outlier` (1.5·IQR por combustible),
-   - `is_ladder_violation` (orden `regular ≤ super ≤ v_power`; el **diesel** es un
-     producto aparte y no entra en la regla).
-5. **Estandarización** → unidades unificadas (`GTQ/galón`), columna `GTQ/litro`,
-   redondeo canónico.
-   > La **normalización z-score** para ML **no** se hace aquí a propósito: debe
-   > ajustarse solo con el conjunto de entrenamiento para evitar *data leakage*.
-   > Pertenece a la etapa de modelado.
-
-**Ejemplo real del dataset:** `regular` en `IMG_8286` tenía confianza 0.55 → se
-descartó y se imputó por interpolación a **38.47**, muy cerca de la lectura débil
-original (38.59): la interpolación se validó sola.
-
----
-
-## Etapa 4 — Carga (dataset para el modelo)
-
-El objetivo es **pronosticar el precio** para decidir *cuánto y cuándo comprar*. Por
-eso la base **no** guarda metadatos de foto ni columnas internas del ETL: es **una
-sola tabla desnormalizada** (`precios_combustible`), lista para exportar directo a
-un dataframe. Grano: **un combustible por foto/fecha** (20 filas). No usa
-`AUTOINCREMENT`, así que **no existe `sqlite_sequence`**.
-
-**Tabla `precios_combustible`** (+ vista `v_precios_ancho`):
-
-| Columna | Qué representa |
+| Ruta | Devuelve |
 |---|---|
-| `id` | Identificador de fila |
-| `fecha`, `fecha_hora_local`, `anio`, `semana_iso` | Eje temporal (comparar el cambio en el tiempo) |
-| `id_estacion`, `estacion`, `pais`, `latitud`, `longitud`, `altitud_m` | Ubicación mínima (futuro multi-estación) |
-| `tipo_combustible`, `categoria` | Combustible (diesel/regular/super/v_power) y su tipo |
-| **`precio_galon`**, `precio_litro`, `moneda` | **Precio limpio** (objetivo) y su versión por litro |
-| `calidad_precio` | Confiabilidad en 1 columna: `leido` / `reconciliado` / `imputado` |
-| `precio_galon_anterior`, `variacion_abs`, `variacion_pct`, `dias_desde_anterior` | Features temporales causales — señales de *cuándo/cuánto comprar* |
+| `GET /health` | estado del servicio y si puede leer Oro |
+| `GET /precios/actual` | último precio semanal por combustible |
+| `GET /precios?combustible=diesel&desde=2026-10-01&hasta=2026-11-30&limit=100` | histórico semanal con filtros |
+| `GET /prediccion?combustible=super` | predicción de la semana siguiente, con la semana y su probabilidad |
+| `GET /modelo/metricas` | exactitud del modelo elegido y de la línea base |
 
-Ejemplos de consulta:
+### Desplegar
 
-```sql
--- Serie de precios en formato ancho (para graficar / correlacionar)
-SELECT fecha, diesel, regular, super, v_power FROM v_precios_ancho ORDER BY fecha;
-
--- Solo precios de alta confianza (excluye imputados) para entrenar
-SELECT fecha, tipo_combustible, precio_galon
-FROM precios_combustible WHERE calidad_precio <> 'imputado';
-
--- Ritmo de subida por combustible (¿acelera o se frena? -> cuándo comprar)
-SELECT fecha, tipo_combustible, variacion_abs, variacion_pct
-FROM precios_combustible WHERE variacion_abs IS NOT NULL ORDER BY fecha;
-```
-
-> La misma tabla se exporta a `artifacts/gold/dataset_precios.csv` para cargarla
-> directo con `pandas.read_csv` en la etapa de modelado.
-
----
-
-## Contenerización — arquitectura de microservicios (Docker)
-
-### ¿Qué son Docker y Docker Compose?
-
-- **Docker** empaqueta código + dependencias + runtime en una **imagen** inmutable;
-  un **contenedor** es una instancia corriendo de esa imagen, aislada del sistema
-  operativo anfitrión pero mucho más liviana que una máquina virtual (comparte el
-  kernel del host, no virtualiza hardware).
-- **Docker Compose** describe, en un solo archivo YAML declarativo, **varios
-  contenedores relacionados** (servicios, redes, volúmenes) y cómo depende cada uno
-  del otro, para levantarlos todos con un solo comando en vez de `docker run` a mano
-  uno por uno.
-
-### De pipeline monolítico a microservicios
-
-Antes, las 4 etapas (`extract → eda → transform → load`) corrían como **funciones
-Python dentro de un mismo proceso** (`src/pipeline.py`), compartiendo memoria y el
-mismo filesystem local. Ahora cada etapa es su **propio contenedor**, con una sola
-responsabilidad, que se puede construir, versionar y ejecutar de forma
-independiente — la definición de microservicio que aplica a un pipeline **batch**
-(a diferencia de microservicios web, aquí no hay APIs síncronas entre etapas:
-cada servicio corre, escribe su resultado y termina; el siguiente lo recoge).
-
-```
-                 ┌────────────┐
-                 │  extract   │  lee Data/*.HEIC + annotations/*.json
-                 └─────┬──────┘  escribe bronze/*.csv
-                       │ (depends_on: completado con éxito)
-              ┌────────┴────────┐
-              ▼                 ▼
-        ┌──────────┐      ┌───────────┐
-        │   eda     │      │ transform │  lee bronze/*.csv
-        └────┬──────┘      └─────┬─────┘  escribe silver/*.csv
-             │                    │ (depends_on: completado con éxito)
-             ▼                    ▼
-      reports_data          ┌──────────┐
-      (volumen)             │   load   │  lee silver/*.csv
-                             └────┬─────┘  escribe gold/*.csv + db/*.db
-                                  ▼
-                            db_data (volumen)
-
-   artifacts_data (volumen) — compartido por extract / eda / transform / load
-```
-
-Los 4 servicios comparten la **misma imagen** (`Dockerfile` único: Python +
-`requirements.txt` + código de `src/`); lo que cambia entre uno y otro es solo el
-**comando** que corre (`docker-compose.yml`), igual que ya se podía correr
-`python -m src.extract` de forma aislada antes de contenerizar.
-
-### Volúmenes — cómo persiste la data entre contenedores
-
-Cada contenedor tiene su propio filesystem efímero: si `extract` escribiera solo
-"dentro" de su contenedor, esos datos **desaparecerían** al terminar y `transform`
-nunca los vería. Se investigaron las dos formas de persistir datos en Docker:
-
-| Mecanismo | Qué es | Se usó aquí? |
-|---|---|---|
-| **Bind mount** | Monta una carpeta *del host* directo en el contenedor (`-v ./carpeta:/app/carpeta`). Simple, pero acopla el contenedor a rutas específicas del sistema anfitrión. | No — los insumos (`Data/`, `annotations/`) se **copian a la imagen** en el build (`Dockerfile`), no cambian entre corridas. |
-| **Named volume** | Docker crea y administra el almacenamiento (`docker volume create`), identificado por nombre, independiente de cualquier ruta del host. Sobrevive a que el contenedor se borre y se puede **montar en varios contenedores a la vez**. | **Sí** — es el mecanismo que conecta a los 4 servicios entre sí. |
-
-`docker-compose.yml` declara 3 volúmenes nombrados:
-
-- `artifacts_data` → `/app/artifacts` — compartido por `extract`, `eda`, `transform`
-  y `load` (así `transform` lee lo que `extract` escribió, aunque corrieron en
-  contenedores distintos).
-- `db_data` → `/app/db` — la base SQLite final, persistida aunque el contenedor
-  `load` ya haya terminado y sido eliminado.
-- `reports_data` → `/app/reports` — figuras y reporte del EDA.
-
-Se verificó la persistencia real: tras `docker compose up`, un contenedor **nuevo
-y desconectado** de los que generaron los datos (`docker compose run --rm load ...`)
-pudo leer las 20 filas de `db_data` y las 5 figuras de `reports_data` — confirma que
-el volumen, no el contenedor, es quien conserva el estado.
-
-### Cómo correrlo
+En el Droplet, con la llave SSH asignada:
 
 ```bash
-docker compose build          # construye la imagen (una sola vez, o tras cambiar código)
-docker compose up             # corre extract -> (eda + transform) -> load, en orden, y sale
-docker compose down           # borra contenedores y red (los volúmenes quedan)
-docker compose down -v        # borra también los volúmenes (reinicia todo desde cero)
-
-docker volume ls              # ver los volúmenes nombrados creados
-docker compose run --rm --entrypoint python load -c "import sqlite3; ..."  # inspeccionar la db
+ssh -i <llave> equipo-03@165.22.137.8
+cd /home/equipo-03
+git clone https://github.com/Equipo3MLOPS/Proyecto1_Gasolineras-.git   # o git pull si ya existe
+cd Proyecto1_Gasolineras-/api
+cp .env.example .env && chmod 600 .env    # completar DATABRICKS_TOKEN
+docker compose up -d --build              # restart: unless-stopped -> sigue corriendo al cerrar SSH
+curl http://localhost:8003/health
 ```
 
-El orden de ejecución (`extract` primero; `eda` y `transform` en paralelo después;
-`load` al final) lo garantiza `depends_on` con `condition: service_completed_successfully`
-en `docker-compose.yml` — cada servicio espera a que el anterior **termine con
-código 0**, no solo a que "arranque" (que es el `depends_on` por defecto, pensado
-para servicios de larga duración como una base de datos, no para trabajos batch
-como estos). Requiere Docker Compose v2 reciente.
+Desde otra computadora: `BASE_URL=http://165.22.137.8:8003 api/tests/consultas_api.sh` consulta el precio actual y la
+predicción de súper, regular y diésel.
 
----
+### Por qué Docker
 
-## Hallazgos
+El Droplet es compartido entre equipos y el enunciado prohíbe instalar paquetes a nivel de sistema. Docker
+aísla Python y las dependencias de la API en una imagen propia, el contenedor se reinicia solo
+(`restart: unless-stopped`) y se ejecuta igual en una laptop y en el servidor. Dentro de la imagen, `uv`
+instala las dependencias de forma rápida y reproducible.
 
-- **1 estación**, 5 visitas semanales (9–30 jul 2026); cada llenado fue de **Q150 exactos**.
-- Precio **Super** subió de forma sostenida: **38.09 → 39.59 → 41.09 → 42.09** Q/galón.
-- El display grande (venta/galones) es nítido; los 4 mini-displays de precio son la
-  parte difícil — el **diesel** es el peor leído (4/5 lecturas de baja confianza).
-- La reconciliación deja el precio del combustible surtido prácticamente exacto.
+### De dónde lee la API
 
-## Limitaciones y próximos pasos
+La API solo lee la capa Oro. En el Droplet usa `GOLD_MODE=databricks`: consulta las tablas `workspace.gold.*`
+por el SQL Warehouse con un token de Databricks, porque el usuario del Droplet no tiene permiso de lectura sobre
+el bucket Oro. El modo `s3` (Delta con `deltalake` y credenciales de solo lectura) queda implementado para
+cuando ese acceso exista, y `local` sirve para desarrollo.
 
-- Muestra pequeña (5 fotos, 1 estación): la imputación temporal del **diesel** es de
-  baja fiabilidad (casi no hay anclas confiables) y queda marcada como tal.
-- **Automatizar la lectura**: implementar un `DisplayReader` con OCR/visión real para
-  procesar lotes grandes sin intervención manual.
-- **Modelado (ML/DL)**: exportar `v_prices_wide` / `fuel_prices` y aplicar la
-  normalización dentro del split de entrenamiento. Con más historia, un modelo de
-  serie temporal puede predecir el precio semanal por combustible.
+## Seguridad
 
+- Las credenciales van solo en `api/.env` del servidor, con permisos 600. El `.gitignore` excluye `.env`,
+  `*.pem`, `id_rsa*` y `*.key`.
+- Las llaves SSH son personales y no se suben al repositorio.
+- En Databricks no hay credenciales en los notebooks: el acceso a S3 pasa por las external locations de Unity
+  Catalog.
+- Cada recurso usa el prefijo del equipo: `equipo3/` en S3, el usuario `equipo-03` y el puerto 8003 en el Droplet.
 
----
+## CI/CD
 
-## Automatización con GitHub Actions
-
-El workflow `.github/workflows/mlops-pipeline.yml` automatiza las etapas de MLOps de los ejercicios del equipo. Se ejecuta cuando hay cambios relevantes en la rama `main`, en cada pull request hacia `main`, semanalmente los lunes a las 06:30 UTC y también bajo demanda desde la pestaña **Actions**.
-
-El job **ETL de gasolineras** instala este proyecto y ejecuta `extract → eda → transform → load`. Después comprueba que existan los CSV de las capas bronze, silver y gold, que el dataset final tenga 20 filas y los cuatro combustibles esperados, que no haya precios nulos y que SQLite contenga el mismo número de registros. Los resultados se publican como un artefacto descargable de la ejecución.
-
-El job **Entrenamiento y evaluación** obtiene `Equipo3MLOPS/MLOPS-Actividad1`, instala el paquete `credit-pipeline` y ejecuta `credit-pipeline-demo`, que realiza extracción, filtrado, separación 80/20, transformación de variables y entrenamiento de KMeans. La salida con el valor de silhouette y la distribución de segmentos queda disponible como evidencia de la ejecución.
-
-Ambos jobs se ejecutan de forma independiente. El job **Resumen del pipeline** solo finaliza correctamente cuando el ETL y el entrenamiento han terminado correctamente; por tanto, cualquier fallo aparece como fallo global del workflow.
-
-Para ejecutar el flujo manualmente, abre **Actions → MLOps - ETL y entrenamiento → Run workflow**. La opción `skip_eda` permite omitir el análisis exploratorio cuando solo se necesita regenerar las capas transformadas y la base de datos.
-
-> El entrenamiento se obtiene siempre desde la rama `main` de `MLOPS-Actividad1`. Por ello, una modificación de ese repositorio puede validarse inmediatamente con `workflow_dispatch` desde este repositorio, aunque no active por sí sola el workflow del repositorio de gasolineras.
+[`.github/workflows/databricks-deploy.yml`](.github/workflows/databricks-deploy.yml) valida el bundle en cada
+pull request y lo despliega con cada push a `main`. Necesita los secrets `DATABRICKS_HOST` y `DATABRICKS_TOKEN`
+en el repositorio.

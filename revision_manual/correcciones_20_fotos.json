@@ -1,0 +1,70 @@
+{
+  "fecha": "2026-11-24",
+  "revisor": "Hugo Rivas",
+  "semilla": 42,
+  "fuente": "workspace.bronze.fotos_precios",
+  "muestra": [
+    "IMG_8063",
+    "IMG_4090",
+    "IMG_3215",
+    "IMG_8354",
+    "IMG_5697",
+    "IMG_5348",
+    "IMG_5269",
+    "IMG_4201",
+    "IMG_3840",
+    "IMG_8148",
+    "IMG_7270",
+    "IMG_3605",
+    "IMG_7736",
+    "IMG_6820",
+    "IMG_3247",
+    "IMG_5181",
+    "IMG_5311",
+    "IMG_7185",
+    "IMG_7997",
+    "IMG_7549"
+  ],
+  "revisadas": 20,
+  "ilegibles": 0,
+  "correctas": 9,
+  "exactitud_pct": 45.0,
+  "montos_correctos": 18,
+  "combustible_correcto": 10,
+  "correcciones": {
+    "IMG_8354": {
+      "combustible": "super"
+    },
+    "IMG_5697": {
+      "combustible": "super"
+    },
+    "IMG_5269": {
+      "combustible": "super"
+    },
+    "IMG_4201": {
+      "combustible": "super"
+    },
+    "IMG_3605": {
+      "esta_venta": 190.02
+    },
+    "IMG_6820": {
+      "combustible": "super"
+    },
+    "IMG_5181": {
+      "combustible": "super"
+    },
+    "IMG_5311": {
+      "combustible": "super"
+    },
+    "IMG_7185": {
+      "galones": 3.391,
+      "combustible": "super"
+    },
+    "IMG_7997": {
+      "combustible": "super"
+    },
+    "IMG_7549": {
+      "combustible": "super"
+    }
+  }
+}

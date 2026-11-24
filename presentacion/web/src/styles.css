@@ -1,0 +1,171 @@
+/*
+VOICE   claro y honesto, para un jurado que no conoce el curso: primero el valor, luego la técnica.
+IDEA    la presentación es el rótulo de precios de una gasolinera de noche: asfalto, la marquesina encendida
+        arriba, módulos LED de 7 segmentos que se prenden, placas de color por combustible.
+PICTURE cada diapositiva vive bajo la marquesina; sus cifras son módulos LED reales (segmentos apagados visibles).
+COLOUR  asfalto #15171A, luz de marquesina #EAF4FF, LED ámbar #FFB000 para precios; placas por combustible;
+        dirección en escala cálida/fría con forma: sube ▲ #FF6A3D, baja ▼ #3FD2C7, se mantiene = #A3A9B1.
+TYPE    Barlow Condensed 700–800 (letra de rótulo de carretera) en títulos; Barlow 400–600 en texto; cifras tabulares.
+LAYOUT  lienzo 1600×900 escalado; títulos a la izquierda bajo la marquesina; una idea y un momento por diapositiva.
+RAISES  de «Pronóstico»: la dirección se codifica con color cálido/frío y forma, nunca solo color.
+        de «Ticket»: cifras tabulares alineadas a la derecha y unidades que nunca se cortan.
+MOTION  transición = barrido de luz por la marquesina + entrada desde el lado del avance (ease-out fuerte, ≤520 ms);
+        dentro de cada diapositiva un solo momento: los LED se encienden o el dato se dibuja.
+*/
+:root {
+  --asfalto: #15171a;
+  --asfalto-2: #1c1f23;
+  --modulo: #0b0c0e;
+  --bisel: #2e3238;
+  --linea: #3a3f46;
+  --grid: #2a2e34;
+  --text: #f1eee8;
+  --text-2: #b3ada3;
+  --text-3: #8d877d;
+  --luz: #eaf4ff;
+  --led: #ffb000;
+  --led-off: rgba(255, 176, 0, 0.075);
+  --led-glow: rgba(255, 176, 0, 0.55);
+  --carril: #f2c230;
+  --super: #23b25a;
+  --regular: #f2c230;
+  --diesel: #c9ced6;
+  --vpower: #e8484f;
+  --sube: #ff6a3d;
+  --baja: #3fd2c7;
+  --igual: #a3a9b1;
+  --bronce: #c0844f;
+  --plata: #aeb6c0;
+  --oro: #e0b33a;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; height: 100%; background: #0c0d0f; overflow: hidden; }
+body { font-family: "Barlow", "Helvetica Neue", Arial, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+::selection { background: var(--led); color: #1a1200; }
+
+/* ---------------------------------------------------------------- escenario: asfalto bajo la marquesina */
+.viewport { position: fixed; inset: 0; overflow: hidden; touch-action: pan-y; }
+.stage {
+  width: 1600px; height: 900px; position: absolute; left: 50%; top: 50%; transform-origin: center center; overflow: hidden;
+  background:
+    radial-gradient(ellipse 120% 95% at 50% 42%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.5)),
+    radial-gradient(ellipse 15% 70% at 12% 0%, rgba(234, 244, 255, 0.075), rgba(234, 244, 255, 0) 72%),
+    radial-gradient(ellipse 15% 70% at 37% 0%, rgba(234, 244, 255, 0.075), rgba(234, 244, 255, 0) 72%),
+    radial-gradient(ellipse 15% 70% at 63% 0%, rgba(234, 244, 255, 0.075), rgba(234, 244, 255, 0) 72%),
+    radial-gradient(ellipse 15% 70% at 88% 0%, rgba(234, 244, 255, 0.075), rgba(234, 244, 255, 0) 72%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .007' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.4 .62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E") 0 0 / 1600px 900px,
+    var(--asfalto);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+/* marquesina: franja oscura con su tira de luz; el barrido corre en cada cambio de diapositiva */
+.canopy { position: absolute; left: 0; right: 0; top: 0; height: 26px; z-index: 3; pointer-events: none;
+  background:
+    radial-gradient(ellipse 46px 5px at 12% 100%, #fff, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(ellipse 46px 5px at 37% 100%, #fff, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(ellipse 46px 5px at 63% 100%, #fff, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(ellipse 46px 5px at 88% 100%, #fff, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(180deg, #24272b, #121315 70%, #0c0d0e); border-bottom: 1px solid #000; }
+.canopy::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--luz); box-shadow: 0 0 18px 2px rgba(234, 244, 255, 0.45), 0 0 60px 6px rgba(234, 244, 255, 0.12); }
+.canopy .sweep { position: absolute; bottom: -2px; left: 0; width: 360px; height: 7px; z-index: 1; background: radial-gradient(closest-side, #fff, rgba(255, 255, 255, 0)); filter: blur(1px); transform: translateX(-400px); animation: sweep 760ms var(--ease-in-out) both; }
+.canopy .sweep.back { animation-name: sweep-back; }
+@keyframes sweep { from { transform: translateX(-400px); } to { transform: translateX(1640px); } }
+@keyframes sweep-back { from { transform: translateX(1640px); } to { transform: translateX(-400px); } }
+
+/* ---------------------------------------------------------------- diapositivas y transición */
+.slide {
+  position: absolute; inset: 0; padding: 68px 88px 96px; display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden; transform: translateX(56px); filter: blur(6px);
+  transition: opacity 220ms ease-out, transform 220ms ease-out, filter 220ms ease-out, visibility 0s linear 220ms;
+}
+.slide.past { transform: translateX(-56px); }
+.slide.on {
+  opacity: 1; visibility: visible; transform: none; filter: none;
+  transition: opacity 420ms var(--ease-out) 90ms, transform 520ms var(--ease-out) 90ms, filter 420ms var(--ease-out) 90ms, visibility 0s;
+}
+.slide h1, .slide h2 { font-family: "Barlow Condensed", "Barlow", sans-serif; font-weight: 700; letter-spacing: -0.005em; line-height: 1; margin: 0; text-wrap: balance; color: var(--text); }
+.slide h2 { font-size: 66px; max-width: 1320px; }
+.lead { font-size: 26px; line-height: 1.4; color: var(--text-2); max-width: 980px; margin: 16px 0 0; }
+.body { font-size: 23px; line-height: 1.45; }
+.small { font-size: 18px; line-height: 1.4; color: var(--text-2); }
+.grow { flex: 1; min-height: 0; }
+.row { display: flex; gap: 40px; }
+.col { display: flex; flex-direction: column; }
+b, strong { font-weight: 600; color: var(--text); }
+
+/* módulos del rótulo: paneles mate con bisel, un solo radio por escala (6 / 10 / 14) */
+.panel { background: linear-gradient(180deg, #202328, #1a1d21); border: 1px solid var(--bisel); border-radius: 10px; padding: 26px 30px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 24px rgba(0, 0, 0, 0.28); }
+.plate { display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; padding: 3px 10px; font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 17px; letter-spacing: 0.02em; color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c, var(--linea)) 62%, white), var(--c, var(--linea)) 48%, color-mix(in srgb, var(--c, var(--linea)) 82%, black));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--c, var(--linea)) 42%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+.plate.dark-ink { color: #17140c; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35); }
+
+/* carcasa metálica con tornillos y vidrio: solo para los objetos que son rótulos */
+.housing { position: relative; }
+.housing::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3;
+  background:
+    radial-gradient(circle at 13px 13px, #c2c8cf 0 2.2px, #5a6067 2.9px 3.8px, rgba(0, 0, 0, 0) 4.4px),
+    radial-gradient(circle at calc(100% - 13px) 13px, #c2c8cf 0 2.2px, #5a6067 2.9px 3.8px, rgba(0, 0, 0, 0) 4.4px),
+    radial-gradient(circle at 13px calc(100% - 13px), #c2c8cf 0 2.2px, #5a6067 2.9px 3.8px, rgba(0, 0, 0, 0) 4.4px),
+    radial-gradient(circle at calc(100% - 13px) calc(100% - 13px), #c2c8cf 0 2.2px, #5a6067 2.9px 3.8px, rgba(0, 0, 0, 0) 4.4px),
+    linear-gradient(112deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0) 72%, rgba(255, 255, 255, 0.03)); }
+
+.chip { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 8px 18px; font-size: 19px; font-weight: 600; border: 1.5px solid var(--linea); background: #1b1e22; color: var(--text-2); cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease, transform 160ms var(--ease-out); }
+.chip[aria-pressed="true"] { border-color: var(--led); color: var(--text); background: rgba(255, 176, 0, 0.1); }
+.chip:active, .btn:active, .node:active { transform: scale(0.97); }
+.chip i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.btn { border: 0; background: var(--led); color: #1a1200; border-radius: 8px; padding: 14px 26px; font-size: 20px; font-weight: 700; cursor: pointer; transition: transform 160ms var(--ease-out), background-color 160ms ease; box-shadow: 0 0 22px rgba(255, 176, 0, 0.25); }
+.btn:focus-visible, .chip:focus-visible, input:focus-visible, .navbtn:focus-visible, .node:focus-visible { outline: 3px solid var(--led); outline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover { border-color: #5a616b; color: var(--text); }
+  .btn:hover { background: #ffbe2e; }
+}
+
+/* ---------------------------------------------------------------- módulo LED */
+.lcd { display: inline-flex; align-items: flex-end; gap: 14px; position: relative; border-radius: 8px; padding: 14px 20px 12px;
+  background: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1.4px) 0 0 / 7px 7px, var(--modulo);
+  border: 2px solid var(--bisel); box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.04); }
+.lcd::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(112deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 34%); }
+.lcd .cap { position: absolute; top: 7px; left: 14px; font-size: 13px; font-weight: 600; color: var(--text-3); letter-spacing: 0.01em; }
+.lcd.capped { padding-top: 30px; }
+.lcd .unit { font-size: 20px; font-weight: 600; color: var(--text-2); padding-bottom: 4px; white-space: nowrap; }
+.seg { display: inline-flex; align-items: flex-end; }
+.seg svg { display: block; overflow: visible; }
+.seg:not(.dots) svg { filter: drop-shadow(0 0 5px var(--glow, var(--led-glow))); }
+.seg.power svg .lit, .seg.power:not(.dots) svg { animation: power-on 420ms steps(1, end) both; animation-delay: calc(var(--i, 0) * 45ms + var(--d, 0ms)); }
+@keyframes power-on { 0% { opacity: 0.08; } 22% { opacity: 0.85; } 38% { opacity: 0.2; } 56% { opacity: 1; } 70% { opacity: 0.55; } 100% { opacity: 1; } }
+
+/* ---------------------------------------------------------------- pie: placa del equipo y contador LED */
+.bar { position: absolute; left: 88px; right: 88px; bottom: 28px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; color: var(--text-3); pointer-events: none; }
+.bar .count { display: inline-flex; align-items: center; gap: 10px; }
+.progress { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--led); box-shadow: 0 0 12px var(--led-glow); transition: width 520ms var(--ease-out); z-index: 4; }
+.navbtn { position: absolute; top: 50%; transform: translateY(-50%); width: 56px; height: 96px; border: 0; background: transparent; font-size: 40px; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity 200ms ease; z-index: 5; }
+@media (hover: hover) and (pointer: fine) { .stage:hover .navbtn { opacity: 1; } }
+.navbtn.prev { left: 8px; } .navbtn.next { right: 8px; }
+.notes { position: fixed; left: 16px; right: 16px; bottom: 16px; max-height: 32vh; overflow: auto; background: #0b0c0e; border: 1px solid var(--bisel); color: var(--text); font-size: 17px; line-height: 1.5; padding: 16px 20px; border-radius: 10px; z-index: 20; }
+.notes b { color: var(--led); }
+.overview { position: fixed; inset: 0; background: rgba(10, 11, 13, 0.94); z-index: 30; padding: 40px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-content: start; }
+.overview button { text-align: left; border: 1px solid var(--bisel); border-radius: 10px; background: #1b1e22; color: var(--text); padding: 16px 18px; font-size: 16px; cursor: pointer; min-height: 96px; }
+.overview button b { display: block; font-size: 13px; color: var(--led); margin-bottom: 6px; }
+.overview button.cur { outline: 3px solid var(--led); }
+.help { position: fixed; right: 14px; top: 12px; font-size: 13px; color: var(--text-2); z-index: 10; background: rgba(12, 13, 15, 0.8); border: 1px solid var(--bisel); border-radius: 6px; padding: 4px 10px; }
+
+/* ---------------------------------------------------------------- imprimir */
+body.print { overflow: visible; background: var(--asfalto); height: auto; }
+body.print .viewport { position: static; display: block; }
+body.print .stage { position: relative; left: 0; top: 0; transform: none !important; box-shadow: none; margin: 0; page-break-after: always; break-after: page; }
+body.print .slide { visibility: visible; opacity: 1; transform: none; filter: none; transition: none; }
+body.print .canopy .sweep { display: none; }
+@page { size: 1600px 900px; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide, .slide.on { transform: none !important; filter: none !important; transition: opacity 200ms ease, visibility 0s; }
+  .canopy .sweep, .seg.power svg, .seg.power svg .lit { animation: none; }
+  .progress { transition: none; }
+}
