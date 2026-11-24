@@ -18,3 +18,14 @@ reports/figures/
 mlruns/
 mlartifacts/
 mlflow.db
+
+# Secretos y credenciales (API en el Droplet) — NUNCA subir el .env real
+.env
+*.env
+!.env.example
+*.pem
+id_rsa*
+*.key
+
+# Datos de oro exportados para desarrollo local de la API (regenerables)
+api/local_gold/

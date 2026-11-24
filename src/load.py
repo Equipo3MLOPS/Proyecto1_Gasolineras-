@@ -1,118 +1,96 @@
 from __future__ import annotations
 
-import sqlite3
-
-import numpy as np
 import pandas as pd
 
-from . import config as C
-from .transform import _station_id
-
-SCHEMA = """
-DROP VIEW  IF EXISTS v_precios_ancho;
-DROP TABLE IF EXISTS precios_combustible;
-
-CREATE TABLE precios_combustible (
-    id                     INTEGER PRIMARY KEY,   -- sin AUTOINCREMENT (evita sqlite_sequence)
-    fecha                  TEXT NOT NULL,         -- YYYY-MM-DD (eje temporal)
-    fecha_hora_local       TEXT,                  -- timestamp local de la foto
-    anio                   INTEGER,
-    semana_iso             INTEGER,               -- semana del anio (los precios cambian por semana)
-    id_estacion            TEXT,
-    estacion               TEXT,
-    pais                   TEXT,
-    latitud                REAL,
-    longitud               REAL,
-    altitud_m              REAL,
-    tipo_combustible       TEXT NOT NULL,         -- diesel / regular / super / v_power
-    categoria              TEXT,                  -- gasolina / diesel
-    precio_galon           REAL,                  -- Q/galon (objetivo del pronostico)
-    precio_litro           REAL,                  -- Q/litro (misma info estandarizada)
-    moneda                 TEXT,
-    calidad_precio         TEXT,                  -- leido / reconciliado / imputado
-    precio_galon_anterior  REAL,                  -- precio previo del mismo combustible
-    variacion_abs          REAL,                  -- precio - precio_anterior
-    variacion_pct          REAL,                  -- variacion porcentual
-    dias_desde_anterior    INTEGER                -- dias entre observaciones
-);
-
-CREATE INDEX idx_precio_combustible_fecha ON precios_combustible(tipo_combustible, fecha);
-
--- Vista ancha: una columna por combustible (comoda para graficar y correlacionar)
-CREATE VIEW v_precios_ancho AS
-SELECT
-    fecha_hora_local,
-    MIN(fecha)       AS fecha,
-    MIN(id_estacion) AS id_estacion,
-    MAX(CASE WHEN tipo_combustible='diesel'  THEN precio_galon END) AS diesel,
-    MAX(CASE WHEN tipo_combustible='regular' THEN precio_galon END) AS regular,
-    MAX(CASE WHEN tipo_combustible='super'   THEN precio_galon END) AS super,
-    MAX(CASE WHEN tipo_combustible='v_power' THEN precio_galon END) AS v_power
-FROM precios_combustible
-GROUP BY fecha_hora_local;
-"""
+from . import config as C, io_layer as io
 
 
-def _build_dataset() -> pd.DataFrame:
-    prices = pd.read_csv(C.SILVER_PRICES, parse_dates=["ts_local"])
-    bronze = pd.read_csv(C.BRONZE_OBS)[["image_id", "latitude", "longitude", "altitude_m"]]
+def _direccion(var_abs) -> object:
+    if pd.isna(var_abs):
+        return None
+    if var_abs > C.DIRECCION_UMBRAL:
+        return "sube"
+    if var_abs < -C.DIRECCION_UMBRAL:
+        return "baja"
+    return "se_mantiene"
 
-    df = prices.merge(bronze, on="image_id", how="left")
 
-    out = pd.DataFrame()
-    out["fecha_hora_local"] = df["ts_local"]
-    out["fecha"] = df["ts_local"].dt.date.astype(str)
-    out["anio"] = df["ts_local"].dt.year
-    out["semana_iso"] = df["ts_local"].dt.isocalendar().week.astype(int)
-    out["id_estacion"] = [
-        _station_id(la, lo) for la, lo in zip(df["latitude"], df["longitude"])
-    ]
-    out["estacion"] = C.ESTACION_MARCA
-    out["pais"] = C.PAIS
-    out["latitud"] = df["latitude"].round(6)
-    out["longitud"] = df["longitude"].round(6)
-    out["altitud_m"] = df["altitude_m"].round(1)
-    out["tipo_combustible"] = df["fuel_type"]
-    out["categoria"] = df["fuel_category"]
-    out["precio_galon"] = df["price_gtq_gal"]
-    out["precio_litro"] = df["price_gtq_liter"]
-    out["moneda"] = C.CURRENCY
-    out["calidad_precio"] = df["status"].map(C.CALIDAD_PRECIO).fillna(df["status"])
+def _precio_semanal(silver: pd.DataFrame) -> pd.DataFrame:
+    g = silver.groupby(["semana", "combustible"])["precio_q_galon"]
+    sem = g.agg(
+        precio_promedio="mean", precio_min="min", precio_max="max",
+        n_observaciones="count",
+    ).reset_index()
+    for c in ("precio_promedio", "precio_min", "precio_max"):
+        sem[c] = sem[c].round(C.PRICE_DECIMALS)
+    sem["anio"] = sem["semana"].map(lambda d: pd.Timestamp(d).year)
+    sem["semana_iso"] = sem["semana"].map(lambda d: pd.Timestamp(d).isocalendar().week)
+    return sem[["semana", "anio", "semana_iso", "combustible",
+                "precio_promedio", "precio_min", "precio_max", "n_observaciones"]]
 
-    out = out.sort_values(["tipo_combustible", "fecha_hora_local"]).reset_index(drop=True)
-    g = out.groupby("tipo_combustible", group_keys=False)
-    out["precio_galon_anterior"] = g["precio_galon"].shift(1)
-    out["variacion_abs"] = (out["precio_galon"] - out["precio_galon_anterior"]).round(C.PRICE_DECIMALS)
-    out["variacion_pct"] = (
-        (out["variacion_abs"] / out["precio_galon_anterior"] * 100).round(2)
-    )
-    dias = g["fecha_hora_local"].diff().dt.total_seconds() / 86400.0
-    out["dias_desde_anterior"] = dias.round().astype("Int64")
 
-    out = out.sort_values(["fecha_hora_local", "tipo_combustible"]).reset_index(drop=True)
-    out.insert(0, "id", range(1, len(out) + 1))
+def _variacion_semanal(sem: pd.DataFrame) -> pd.DataFrame:
+    v = sem[["semana", "combustible", "precio_promedio"]].sort_values(
+        ["combustible", "semana"]
+    ).reset_index(drop=True)
+    v["precio_promedio_anterior"] = v.groupby("combustible")["precio_promedio"].shift(1)
+    v["variacion_abs"] = (v["precio_promedio"] - v["precio_promedio_anterior"]).round(C.PRICE_DECIMALS)
+    v["variacion_pct"] = (v["variacion_abs"] / v["precio_promedio_anterior"] * 100).round(2)
+    v["direccion"] = v["variacion_abs"].map(_direccion)
+    
+    return v.dropna(subset=["precio_promedio_anterior"]).reset_index(drop=True)
 
-    out["fecha_hora_local"] = out["fecha_hora_local"].astype(str)
-    return out
+
+def _features_modelo(sem: pd.DataFrame) -> pd.DataFrame:
+    f = sem[["semana", "combustible", "precio_promedio"]].sort_values(
+        ["combustible", "semana"]
+    ).reset_index(drop=True)
+    gb = f.groupby("combustible")
+    f["variacion_1s"] = gb["precio_promedio"].diff().round(C.PRICE_DECIMALS)
+    f["variacion_2s"] = f.groupby("combustible")["variacion_1s"].shift(1)
+    f["variacion_3s"] = f.groupby("combustible")["variacion_1s"].shift(2)
+    f["variacion_4s"] = f.groupby("combustible")["variacion_1s"].shift(3)
+    f["promedio_movil_4s"] = (
+        gb["precio_promedio"].transform(lambda s: s.rolling(4, min_periods=1).mean())
+    ).round(C.PRICE_DECIMALS)
+
+    
+    piv = sem.pivot_table(index="semana", columns="combustible", values="precio_promedio")
+    dif = (piv.get("super") - piv.get("diesel")).rename("dif_super_diesel").reset_index()
+    f = f.merge(dif, on="semana", how="left")
+    f["dif_super_diesel"] = f["dif_super_diesel"].round(C.PRICE_DECIMALS)
+
+    f["direccion"] = f["variacion_1s"].map(_direccion)
+    
+    f["direccion_siguiente"] = f.groupby("combustible")["direccion"].shift(-1)
+    return f[["semana", "combustible", "precio_promedio",
+              "variacion_1s", "variacion_2s", "variacion_3s", "variacion_4s",
+              "promedio_movil_4s", "dif_super_diesel",
+              "direccion", "direccion_siguiente"]]
 
 
 def run() -> pd.DataFrame:
     C.ensure_dirs()
-    dataset = _build_dataset()
+    silver = io.read_df("silver.precios", parse_dates=["fecha"])
+    silver["semana"] = pd.to_datetime(silver["fecha"]).dt.date.map(C.semana_inicio)
 
-    dataset.to_csv(C.GOLD_DATASET, index=False)
-
-    with sqlite3.connect(C.DB_PATH) as conn:
-        conn.executescript(SCHEMA)
-        dataset.to_sql("precios_combustible", conn, if_exists="append", index=False)
-        conn.commit()
-        n = conn.execute("SELECT COUNT(*) FROM precios_combustible").fetchone()[0]
-        nfuel = conn.execute(
-            "SELECT COUNT(DISTINCT tipo_combustible) FROM precios_combustible"
-        ).fetchone()[0]
+    sem = _precio_semanal(silver)
+    var = _variacion_semanal(sem)
+    feats = _features_modelo(sem)
 
     
-    return dataset
+    for frame in (sem, var, feats):
+        frame["semana"] = frame["semana"].astype(str)
+
+    io.write_df(sem, "gold.precio_semanal")
+    io.write_df(var, "gold.variacion_semanal")
+    io.write_df(feats, "gold.features_modelo")
+
+    print(f"[oro] precio_semanal     -> {io.target_name('gold.precio_semanal')} ({len(sem)} filas)")
+    print(f"[oro] variacion_semanal  -> {io.target_name('gold.variacion_semanal')} ({len(var)} filas)")
+    print(f"[oro] features_modelo    -> {io.target_name('gold.features_modelo')} ({len(feats)} filas; "
+          f"{feats['direccion_siguiente'].notna().sum()} con objetivo para entrenar)")
+    return feats
 
 
 if __name__ == "__main__":
