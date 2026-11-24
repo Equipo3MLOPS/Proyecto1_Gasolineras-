@@ -13,14 +13,17 @@ Endpoints (documento, Fase 5):
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .gold import leer_oro
+
+_STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 app = FastAPI(title=settings.api_title, version=settings.api_version,
               description="Precios y predicción de combustibles Shell (Guatemala). "
@@ -44,7 +47,8 @@ def _oro(tabla: str) -> pd.DataFrame:
 
 @app.get("/", include_in_schema=False)
 def raiz():
-    return RedirectResponse(url="/docs")
+    """Dashboard web que consume la propia API (mismo origen, sin CORS)."""
+    return FileResponse(os.path.join(_STATIC, "index.html"))
 
 
 @app.get("/health", tags=["servicio"])

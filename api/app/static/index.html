@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Precios de Gasolina · Guatemala</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#070b1e; --card:rgba(255,255,255,.045); --card-bd:rgba(255,255,255,.09);
+  --txt:#eaeefc; --mut:#8b93b8; --accent:#7c6cff; --accent2:#22d3ee;
+  --diesel:#fbbf24; --regular:#34d399; --super:#60a5fa; --v_power:#c084fc;
+  --sube:#fb7185; --baja:#34d399; --mant:#94a3b8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--txt);
+  min-height:100vh;overflow-x:hidden;line-height:1.5}
+/* fondo animado tipo aurora */
+.aurora{position:fixed;inset:0;z-index:-1;overflow:hidden}
+.aurora span{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;
+  animation:float 18s ease-in-out infinite}
+.aurora span:nth-child(1){width:46vw;height:46vw;background:#5b3bff;top:-10%;left:-8%}
+.aurora span:nth-child(2){width:38vw;height:38vw;background:#0ea5a5;bottom:-12%;right:-6%;animation-delay:-6s}
+.aurora span:nth-child(3){width:30vw;height:30vw;background:#d946ef;top:40%;left:55%;animation-delay:-11s}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(4vw,6vh) scale(1.08)}66%{transform:translate(-3vw,-4vh) scale(.95)}}
+.wrap{max-width:1160px;margin:0 auto;padding:0 16px 64px}
+header{padding:40px 0 10px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;font-size:26px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 10px 30px rgba(124,108,255,.45)}
+h1{font-family:'Space Grotesk';font-size:clamp(22px,3vw,30px);font-weight:700;letter-spacing:-.5px}
+.sub{color:var(--mut);font-size:13px}
+.status{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--card-bd);
+  padding:9px 15px;border-radius:999px;font-size:13px;font-weight:500}
+.dot{width:9px;height:9px;border-radius:50%;background:#64748b}
+.dot.ok{background:#34d399;box-shadow:0 0 0 0 rgba(52,211,153,.6);animation:pulse 2s infinite}
+.dot.err{background:#fb7185}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.5)}70%{box-shadow:0 0 0 10px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+.sect{margin-top:40px}
+.sect h2{font-family:'Space Grotesk';font-size:13px;font-weight:600;text-transform:uppercase;
+  letter-spacing:2px;color:var(--mut);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.sect h2::before{content:"";width:22px;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--card);border:1px solid var(--card-bd);border-radius:18px;padding:20px;
+  backdrop-filter:blur(12px);opacity:0;transform:translateY(16px);
+  animation:rise .6s cubic-bezier(.2,.7,.3,1) forwards;transition:transform .25s,border-color .25s,box-shadow .25s}
+.card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.18);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+@keyframes rise{to{opacity:1;transform:translateY(0)}}
+.fuel-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.chip{width:12px;height:12px;border-radius:4px}
+.fuel-name{font-weight:600;font-size:14px}
+.price{font-family:'Space Grotesk';font-size:34px;font-weight:700;letter-spacing:-1px}
+.price .q{font-size:17px;color:var(--mut);font-weight:500;margin-right:3px}
+.meta{color:var(--mut);font-size:12px;margin-top:8px}
+/* predicciones */
+.badge{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-family:'Space Grotesk';
+  font-size:15px;padding:7px 13px;border-radius:11px}
+.badge.sube{color:var(--sube);background:rgba(251,113,133,.12)}
+.badge.baja{color:var(--baja);background:rgba(52,211,153,.12)}
+.badge.se_mantiene{color:var(--mant);background:rgba(148,163,184,.14)}
+.bar{height:7px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:14px}
+.bar>i{display:block;height:100%;width:0;border-radius:99px;transition:width 1.1s cubic-bezier(.2,.8,.2,1)}
+.prob{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-top:7px}
+/* chart */
+.panel{background:var(--card);border:1px solid var(--card-bd);border-radius:18px;padding:22px;backdrop-filter:blur(12px)}
+.toggles{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.tg{border:1px solid var(--card-bd);background:transparent;color:var(--mut);font-family:Inter;
+  font-size:13px;font-weight:600;padding:8px 15px;border-radius:999px;cursor:pointer;transition:.2s}
+.tg:hover{color:var(--txt)}
+.tg.on{color:#0b1020;background:var(--c);border-color:transparent}
+.chart-box{position:relative;height:330px;margin-top:10px}
+/* modelo */
+.m-grid{display:grid;gap:16px;grid-template-columns:1.1fr 1fr}
+.mrow{display:flex;align-items:center;gap:12px;margin:14px 0}
+.mrow .lbl{width:120px;font-size:13px;color:var(--mut)}
+.mrow .track{flex:1;height:26px;border-radius:8px;background:rgba(255,255,255,.06);overflow:hidden;position:relative}
+.mrow .fill{height:100%;width:0;border-radius:8px;transition:width 1.1s cubic-bezier(.2,.8,.2,1);
+  display:flex;align-items:center;justify-content:flex-end;padding-right:9px;font-size:12px;font-weight:700;color:#0b1020}
+.win{display:inline-flex;align-items:center;gap:8px;background:rgba(52,211,153,.12);color:var(--baja);
+  font-weight:600;font-size:13px;padding:8px 14px;border-radius:10px;margin-top:6px}
+footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--card-bd);
+  color:var(--mut);font-size:12px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}
+footer a{color:var(--accent2);text-decoration:none}
+.btn{border:1px solid var(--card-bd);background:var(--card);color:var(--txt);font-family:Inter;
+  font-weight:600;font-size:13px;padding:9px 15px;border-radius:10px;cursor:pointer;transition:.2s}
+.btn:hover{border-color:var(--accent)}
+.muted-card{color:var(--mut);font-size:13px;padding:18px}
+@media(max-width:720px){.m-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="aurora"><span></span><span></span><span></span></div>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">⛽</div>
+      <div>
+        <h1>Precios de Gasolina · Guatemala</h1>
+        <div class="sub">Pipeline medallón · predicción semanal · equipo3</div>
+      </div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="status-txt">Conectando…</span></div>
+  </header>
+
+  <section class="sect">
+    <h2>Precio actual por combustible</h2>
+    <div class="grid" id="actual"></div>
+  </section>
+
+  <section class="sect">
+    <h2>Predicción · próxima semana</h2>
+    <div class="grid" id="pred"></div>
+  </section>
+
+  <section class="sect">
+    <h2>Histórico semanal (Q/galón)</h2>
+    <div class="panel">
+      <div class="toggles" id="toggles"></div>
+      <div class="chart-box"><canvas id="chart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="sect">
+    <h2>Modelo de predicción</h2>
+    <div class="panel" id="modelo"><div class="muted-card">Cargando métricas…</div></div>
+  </section>
+
+  <footer>
+    <span id="foot">Datos: capa oro (Databricks)</span>
+    <span><button class="btn" onclick="cargarTodo()">↻ Actualizar</button> &nbsp; <a href="/docs">Ver API /docs →</a></span>
+  </footer>
+</div>
+
+<script>
+const FUELS=[["diesel","Diésel","--diesel"],["regular","Regular","--regular"],["super","Súper","--super"],["v_power","V-Power","--v_power"]];
+const DIR={sube:["SUBE","↑"],baja:["BAJA","↓"],se_mantiene:["SE MANTIENE","→"]};
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const money=v=>v==null?"—":"Q"+Number(v).toFixed(2);
+
+async function get(path){const r=await fetch(path);if(!r.ok)throw new Error(path+" "+r.status);return r.json();}
+
+function animateNum(el,to){const dur=900,t0=performance.now();
+  (function step(t){const p=Math.min(1,(t-t0)/dur);el.textContent=(to*(1-Math.pow(1-p,3))).toFixed(2);
+   if(p<1)requestAnimationFrame(step);else el.textContent=to.toFixed(2);})(t0);}
+
+async function health(){
+  const dot=document.getElementById("dot"),tx=document.getElementById("status-txt");
+  try{const h=await get("/health");
+    if(h.status==="ok"){dot.className="dot ok";tx.textContent="En línea · "+h.predicciones+" predicciones";}
+    else{dot.className="dot err";tx.textContent="Datos no disponibles";}
+  }catch(e){dot.className="dot err";tx.textContent="API sin conexión";}
+}
+
+async function actual(){
+  const cont=document.getElementById("actual");
+  try{const d=await get("/precios/actual");const by={};(d.precios||[]).forEach(p=>by[p.combustible]=p);
+    cont.innerHTML="";
+    FUELS.forEach(([k,nom,cv],i)=>{const p=by[k];const c=cssv(cv);
+      const el=document.createElement("div");el.className="card";el.style.animationDelay=(i*.08)+"s";
+      el.innerHTML=`<div class="fuel-top"><span class="chip" style="background:${c}"></span><span class="fuel-name">${nom}</span></div>
+        <div class="price"><span class="q">Q</span><span class="n">0.00</span></div>
+        <div class="meta">${p?("semana "+p.semana):"sin dato"}</div>`;
+      cont.appendChild(el);
+      if(p)animateNum(el.querySelector(".n"),Number(p.precio_promedio));else el.querySelector(".n").textContent="—";
+    });
+  }catch(e){cont.innerHTML='<div class="muted-card">No se pudo cargar el precio actual.</div>';}
+}
+
+async function pred(){
+  const cont=document.getElementById("pred");
+  try{const d=await get("/prediccion");const by={};(d.predicciones||[]).forEach(p=>by[p.combustible]=p);
+    cont.innerHTML="";
+    FUELS.forEach(([k,nom,cv],i)=>{const p=by[k];const c=cssv(cv);
+      const el=document.createElement("div");el.className="card";el.style.animationDelay=(i*.08)+"s";
+      if(!p){el.innerHTML=`<div class="fuel-top"><span class="chip" style="background:${c}"></span><span class="fuel-name">${nom}</span></div><div class="meta">sin predicción</div>`;cont.appendChild(el);return;}
+      const dir=DIR[p.prediccion]||["?","?"];const pct=Math.round((p.probabilidad||0)*100);
+      el.innerHTML=`<div class="fuel-top"><span class="chip" style="background:${c}"></span><span class="fuel-name">${nom}</span></div>
+        <span class="badge ${p.prediccion}">${dir[1]} ${dir[0]}</span>
+        <div class="bar"><i style="background:${c}"></i></div>
+        <div class="prob"><span>confianza</span><span>${pct}%</span></div>
+        <div class="meta">semana ${p.semana}</div>`;
+      cont.appendChild(el);
+      setTimeout(()=>el.querySelector(".bar>i").style.width=pct+"%",120+i*80);
+    });
+  }catch(e){cont.innerHTML='<div class="muted-card">No se pudo cargar la predicción.</div>';}
+}
+
+let chart,fuelSel="super";
+async function toggles(){
+  const t=document.getElementById("toggles");t.innerHTML="";
+  FUELS.forEach(([k,nom,cv])=>{const b=document.createElement("button");
+    b.className="tg"+(k===fuelSel?" on":"");b.textContent=nom;b.style.setProperty("--c",cssv(cv));
+    b.onclick=()=>{fuelSel=k;document.querySelectorAll(".tg").forEach(x=>x.classList.remove("on"));b.classList.add("on");historico();};
+    t.appendChild(b);});
+}
+async function historico(){
+  try{const d=await get("/precios?combustible="+fuelSel+"&limit=500");
+    const rows=(d.precios||[]).sort((a,b)=>a.semana<b.semana?-1:1);
+    const labels=rows.map(r=>r.semana),vals=rows.map(r=>r.precio_promedio);
+    const c=cssv(FUELS.find(f=>f[0]===fuelSel)[2]);
+    const ctx=document.getElementById("chart");
+    const g=ctx.getContext("2d").createLinearGradient(0,0,0,330);
+    g.addColorStop(0,c+"55");g.addColorStop(1,c+"00");
+    const data={labels,datasets:[{data:vals,borderColor:c,backgroundColor:g,fill:true,tension:.35,
+      borderWidth:2.5,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:c}]};
+    const opts={responsive:true,maintainAspectRatio:false,animation:{duration:900},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+money(c.parsed.y)}}},
+      scales:{x:{grid:{color:"rgba(255,255,255,.04)"},ticks:{color:"#8b93b8",maxTicksLimit:8,font:{size:11}}},
+              y:{grid:{color:"rgba(255,255,255,.06)"},ticks:{color:"#8b93b8",callback:v=>"Q"+v,font:{size:11}}}}};
+    if(chart){chart.data=data;chart.options=opts;chart.update();}else chart=new Chart(ctx,{type:"line",data,options:opts});
+  }catch(e){}
+}
+
+async function modelo(){
+  const cont=document.getElementById("modelo");
+  try{const d=await get("/modelo/metricas");const r=d.resumen||{};
+    const ae=Math.round((r.accuracy_elegido||0)*100),ab=Math.round((r.accuracy_baseline||0)*100);
+    cont.innerHTML=`<div class="m-grid">
+      <div>
+        <div class="mrow"><span class="lbl">${r.modelo_elegido||"modelo"}</span>
+          <div class="track"><div class="fill" style="background:linear-gradient(90deg,var(--accent),var(--accent2))">${ae}%</div></div></div>
+        <div class="mrow"><span class="lbl">línea base</span>
+          <div class="track"><div class="fill" style="background:#475569;color:#cbd5e1">${ab}%</div></div></div>
+        ${r.supera_baseline?'<div class="win">✓ Supera la línea base</div>':'<div class="meta">No supera la línea base</div>'}
+      </div>
+      <div>
+        <div class="price" style="font-size:40px">${ae}<span class="q">%</span></div>
+        <div class="meta">exactitud del modelo elegido · validación temporal (${r.n_test||"?"} semanas de prueba)</div>
+        <div class="meta" style="margin-top:12px">Clasifica la dirección (sube / baja / se mantiene) del precio de la próxima semana por combustible.</div>
+      </div></div>`;
+    requestAnimationFrame(()=>{setTimeout(()=>{cont.querySelectorAll(".fill").forEach((f,i)=>f.style.width=(i?ab:ae)+"%");},150);});
+  }catch(e){cont.innerHTML='<div class="muted-card">No se pudieron cargar las métricas del modelo.</div>';}
+}
+
+async function cargarTodo(){
+  await Promise.all([health(),actual(),pred(),modelo()]);
+  await toggles();await historico();
+  document.getElementById("foot").textContent="Datos: capa oro (Databricks) · "+new Date().toLocaleString("es-GT");
+}
+cargarTodo();
+</script>
+</body>
+</html>

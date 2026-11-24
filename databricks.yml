@@ -17,6 +17,9 @@ variables:
   images_dir:
     description: "Ruta de las fotos que ingesta bronce (external location raw, con subcarpetas por año)."
     default: "s3://cc3105-raw-869227452861-us-east-2-an/img/"
+  alert_email:
+    description: "Correo que recibe la alerta si el Job falla."
+    default: "jspereira0402@gmail.com"
 
 targets:
   dev:
@@ -24,11 +27,34 @@ targets:
     default: true
     workspace:
       host: https://dbc-a56ba7f1-976e.cloud.databricks.com
+  # Producción: el schedule queda ACTIVO (no pausado). Desplegar con:
+  #   databricks bundle deploy -t prod -p uvg-mlops
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-a56ba7f1-976e.cloud.databricks.com
+      root_path: /Workspace/Users/jspereira0402@gmail.com/.bundle/${bundle.name}/prod
+    run_as:
+      user_name: jspereira0402@gmail.com
 
 resources:
   jobs:
     medallon_gasolineras:
       name: "Medallón Gasolineras — ${var.team}"
+
+      # Fase 4.5 — Trigger: programación SEMANAL los martes (cuando el MEM
+      # actualiza los precios de referencia). Se eligió programación en vez de
+      # trigger por llegada de archivos porque el pipeline es batch/overwrite
+      # (no incremental): un trigger por evento sería prematuro.
+      # La pausa la define el modo del target: dev -> pausado, prod -> ACTIVO.
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * TUE"   # cada martes 06:00
+        timezone_id: America/Guatemala
+
+      # Alerta por correo si el Job falla.
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
 
       # Sin job_clusters: cada tarea corre en serverless. Las dependencias que no
       # trae el runtime (pillow-heif para leer .HEIC) se instalan dentro del
