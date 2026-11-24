@@ -37,4 +37,4 @@ export const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 export const REVISION = import.meta.env.VITE_REVISION || "45.0";
 // Revisión manual de 20 fotos (semilla 42, 24-nov-2026): 9 sin errores; montos bien en 18; combustible bien en 10
 export const REV = { fotos: 20, correctas: 9, montos: 18, combustible: 10 };
-export const INTEGRANTES = ["Jose Santiago Pereira", "Nancy Mazariegos", "Hugo Rivas", "Giovanni Santos", "Alexis Mesias"];
+export const INTEGRANTES = ["Jose Santiago Pereira", "Nancy Mazariegos", "Hugo Rivas", "Giovanni Santos", "Alexis Mesias", "Brandon Reyes"];

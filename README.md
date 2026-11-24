@@ -13,7 +13,7 @@ mantiene** la semana siguiente. Los resultados se publican en una API REST.
 - **API en línea:** [`http://165.22.137.8:8003`](http://165.22.137.8:8003/docs) · Swagger en `/docs`
 - **Job de Databricks:** «Medallón Gasolineras — equipo3», workspace `dbc-a56ba7f1-976e`
 
-**Integrantes:** Jose Santiago Pereira · Nancy Mazariegos · Hugo Rivas · Giovanni Santos · Alexis Mesias
+**Integrantes:** Jose Santiago Pereira · Nancy Mazariegos · Hugo Rivas · Giovanni Santos · Alexis Mesias · Brandon Reyes
 
 ![Arquitectura](docs/arquitectura.png)
 

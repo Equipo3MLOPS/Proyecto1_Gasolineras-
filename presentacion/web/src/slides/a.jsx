@@ -35,7 +35,12 @@ export function Portada(p) {
         <div className="col" style={{ flex: 1.15 }}>
           <h1 className="p-title">¿Sube o baja la gasolina la próxima semana?</h1>
           <p className="lead p-lead">Un pipeline que lee fotos de surtidores, ordena los precios por semana y predice la dirección del precio de cada combustible.</p>
-          <div className="small p-names">CC3105 · Equipo 3 · {INTEGRANTES.join(" · ")}</div>
+          <div className="small p-names">
+            <div>CC3105 · Equipo 3</div>
+            <div style={{ marginTop: 6 }}>{INTEGRANTES.map((n, i) => (
+              <span key={n} style={{ whiteSpace: "nowrap" }}>{n}{i < INTEGRANTES.length - 1 ? " · " : ""}</span>
+            ))}</div>
+          </div>
         </div>
         <div className="pylon">
           <div className="py-crown lightbox"><span>Equipo 3</span><i /></div>

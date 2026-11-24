@@ -107,7 +107,7 @@ cada foto y agregaríamos el petróleo como variable.</p>
   </div>
 </div>
 
-<div class="pie">Jose Santiago Pereira · Nancy Mazariegos · Hugo Rivas · Giovanni Santos · Alexis Mesias ·
+<div class="pie">Jose Santiago Pereira · Nancy Mazariegos · Hugo Rivas · Giovanni Santos · Alexis Mesias · Brandon Reyes ·
 Código: github.com/Equipo3MLOPS/Proyecto1_Gasolineras-</div>
 </body></html>"""
 open(sys.argv[1], "w", encoding="utf-8").write(html)
