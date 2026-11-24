@@ -32,9 +32,12 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+
+ETIQUETAS = ["baja", "se_mantiene", "sube"]
 
 from . import config as C, io_layer as io
 
@@ -71,6 +74,29 @@ def split_temporal(etiquetadas: pd.DataFrame, fraccion: float):
         raise ValueError(f"Muy pocas semanas ({len(semanas)}) para validar en el tiempo.")
     corte = semanas[-n_test]
     return etiquetadas[etiquetadas["semana"] < corte], etiquetadas[etiquetadas["semana"] >= corte]
+
+
+def cv_temporal(df: pd.DataFrame, pipe_fn, n_splits: int = 4) -> list[float]:
+    """Validación cruzada TEMPORAL (ventana expansiva) sobre las semanas únicas.
+
+    Con pocos datos, un solo split es ruidoso; promediar varios cortes en el
+    tiempo da una estimación mucho más confiable (y nunca entrena con el futuro).
+    """
+    semanas = np.sort(df["semana"].unique())
+    if len(semanas) < n_splits + 2:
+        n_splits = max(2, len(semanas) - 2)
+    if n_splits < 2:
+        return []
+    accs = []
+    for tr, te in TimeSeriesSplit(n_splits=n_splits).split(semanas):
+        d_tr = df[df["semana"].isin(set(semanas[tr]))]
+        d_te = df[df["semana"].isin(set(semanas[te]))]
+        if d_tr[TARGET].nunique() < 2 or d_te.empty:
+            continue
+        pipe = pipe_fn()
+        pipe.fit(d_tr[FEATURES], d_tr[TARGET])
+        accs.append(float(accuracy_score(d_te[TARGET], pipe.predict(d_te[FEATURES]))))
+    return accs
 
 
 # ------------------------------------------------------------------- modelos
@@ -134,9 +160,11 @@ def evaluar(train: pd.DataFrame, test: pd.DataFrame):
 
 
 def elegir(resultados: dict) -> str:
-    """El mejor clasificador (sin contar la línea base) por accuracy y luego F1."""
+    """El mejor clasificador (sin la línea base). Prioriza la accuracy de
+    validación cruzada temporal (más confiable), luego el holdout y el F1."""
     ml = {k: v for k, v in resultados.items() if k != BASELINE}
-    return max(ml, key=lambda k: (ml[k]["accuracy"], ml[k]["f1_macro"]))
+    return max(ml, key=lambda k: (ml[k].get("cv_accuracy") or 0.0,
+                                  ml[k]["accuracy"], ml[k]["f1_macro"]))
 
 
 # ------------------------------------------------------------------- MLflow
@@ -165,18 +193,76 @@ def _mlflow():
 
 def _log_model(mlflow, pipe, ejemplo: pd.DataFrame, registrar: str | None):
     import mlflow.sklearn
+    from mlflow.models import infer_signature
 
+    # signature: documenta y valida las entradas/salidas del modelo (serving).
+    firma = infer_signature(ejemplo, pipe.predict(ejemplo))
     # cloudpickle: el formato por defecto de MLflow 3 (skops) rechaza árboles y bosques.
-    kwargs = {"input_example": ejemplo, "serialization_format": "cloudpickle"}
+    kwargs = {"input_example": ejemplo, "signature": firma,
+              "serialization_format": "cloudpickle"}
     if registrar:
         kwargs["registered_model_name"] = registrar
     try:  # MLflow 3 usa `name`; MLflow 2 usa `artifact_path`
-        mlflow.sklearn.log_model(pipe, name="modelo_direccion", **kwargs)
+        info = mlflow.sklearn.log_model(pipe, name="modelo_direccion", **kwargs)
     except TypeError:
-        mlflow.sklearn.log_model(pipe, artifact_path="modelo_direccion", **kwargs)
+        info = mlflow.sklearn.log_model(pipe, artifact_path="modelo_direccion", **kwargs)
+    return info
 
 
-def registrar_en_mlflow(resultados, modelos, elegido, train, test) -> dict[str, str]:
+def _set_alias_champion(registrar: str, info) -> None:
+    """Marca la versión elegida como @champion para que la API/serving la ubique."""
+    if not registrar:
+        return
+    try:
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        version = getattr(info, "registered_model_version", None)
+        if not version:  # fallback: la versión más nueva registrada
+            vs = client.search_model_versions(f"name='{registrar}'")
+            version = max((int(v.version) for v in vs), default=None)
+        if not version:
+            return
+        client.set_registered_model_alias(registrar, "champion", str(version))
+        print(f"[modelo] alias @champion -> {registrar} v{version}")
+    except Exception as exc:
+        print(f"[modelo] aviso: no se pudo fijar @champion: {str(exc)[:160]}")
+
+
+def _log_artefactos(mlflow, pipe, y_real, y_pred, nombre: str) -> None:
+    """Loguea matriz de confusión (sobre el holdout) e importancia de variables."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
+        cm = confusion_matrix(y_real, y_pred, labels=ETIQUETAS)
+        fig, ax = plt.subplots(figsize=(4.2, 4.2))
+        ConfusionMatrixDisplay(cm, display_labels=ETIQUETAS).plot(ax=ax, colorbar=False)
+        ax.set_title(f"Matriz de confusión — {nombre}")
+        fig.tight_layout()
+        mlflow.log_figure(fig, "matriz_confusion.png")
+        plt.close(fig)
+
+        pre, clf = pipe.named_steps["pre"], pipe.named_steps["clf"]
+        nombres = list(pre.get_feature_names_out())
+        if hasattr(clf, "feature_importances_"):
+            imp = np.asarray(clf.feature_importances_, dtype=float)
+        else:
+            imp = np.abs(np.asarray(getattr(clf, "coef_", np.zeros((1, len(nombres)))))).mean(axis=0)
+        orden = np.argsort(imp)[::-1][:12][::-1]
+        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        ax2.barh([nombres[i] for i in orden], [imp[i] for i in orden], color="#7c6cff")
+        ax2.set_title(f"Importancia de variables — {nombre}")
+        fig2.tight_layout()
+        mlflow.log_figure(fig2, "importancia_features.png")
+        plt.close(fig2)
+    except Exception as exc:
+        print(f"[modelo] aviso: no se pudieron graficar artefactos: {str(exc)[:160]}")
+
+
+def registrar_en_mlflow(resultados, modelos, elegido, train, test, etiquetadas,
+                        preds_test, nota) -> dict[str, str]:
     """Una corrida por modelo (anidadas en una corrida padre). Devuelve run_ids."""
     mlflow = _mlflow()
     if mlflow is None:
@@ -194,7 +280,19 @@ def registrar_en_mlflow(resultados, modelos, elegido, train, test) -> dict[str, 
         mlflow.log_param("modelo_elegido", elegido)
         mlflow.log_metric("accuracy_elegido", resultados[elegido]["accuracy"])
         mlflow.log_metric("accuracy_baseline", resultados[BASELINE]["accuracy"])
+        mlflow.log_metric("cv_accuracy_elegido", resultados[elegido].get("cv_accuracy") or 0.0)
+        # honestidad estadística: ¿la mejora vs baseline es significativa?
+        mlflow.log_param("aciertos_extra_vs_baseline", nota["aciertos_extra"])
+        mlflow.set_tags({"mejora_significativa": str(nota["significativa"]).lower()})
+        # linaje del dataset de entrada
+        try:
+            ds = mlflow.data.from_pandas(
+                etiquetadas[FEATURES + [TARGET]], name="gold.features_modelo", targets=TARGET)
+            mlflow.log_input(ds, context="training")
+        except Exception as exc:
+            print(f"[modelo] aviso: no se pudo loguear el dataset: {str(exc)[:160]}")
         run_ids["padre"] = padre.info.run_id
+
         for nombre, met in resultados.items():
             with mlflow.start_run(run_name=nombre, nested=True) as run:
                 mlflow.set_tags({"equipo": C.TEAM, "elegido": str(nombre == elegido).lower(),
@@ -207,7 +305,11 @@ def registrar_en_mlflow(resultados, modelos, elegido, train, test) -> dict[str, 
                                        if isinstance(v, (int, float, str, bool)) or v is None})
                     registrar = C.MLFLOW_REGISTERED_MODEL if nombre == elegido else None
                     try:
-                        _log_model(mlflow, modelos[nombre], train[FEATURES].head(3), registrar)
+                        info = _log_model(mlflow, modelos[nombre], train[FEATURES].head(3), registrar)
+                        if nombre == elegido:
+                            y_pred = preds_test[elegido][0]
+                            _log_artefactos(mlflow, modelos[nombre], test[TARGET], y_pred, nombre)
+                            _set_alias_champion(registrar, info)
                     except Exception as exc:  # registrar no debe tumbar el Job
                         print(f"[modelo] aviso: no se pudo guardar/registrar {nombre}: {str(exc)[:200]}")
                 run_ids[nombre] = run.info.run_id
@@ -285,12 +387,27 @@ def run() -> pd.DataFrame | None:
         return None
 
     resultados, modelos, preds_test = evaluar(train, test)
+
+    # Validación cruzada TEMPORAL sobre todas las semanas etiquetadas: estimación
+    # más confiable que un solo split (clave con pocos datos). Decide el elegido.
+    for nombre in candidatos():
+        accs = cv_temporal(etiquetadas, lambda nombre=nombre: candidatos()[nombre])
+        resultados[nombre]["cv_accuracy"] = float(np.mean(accs)) if accs else None
+        resultados[nombre]["cv_accuracy_std"] = float(np.std(accs)) if accs else None
+        resultados[nombre]["cv_folds"] = len(accs)
     elegido = elegir(resultados)
+
+    # Honestidad estadística: diferencia vs baseline en ACIERTOS absolutos sobre el
+    # holdout. Con n_test chico, una diferencia pequeña no es significativa (ruido).
+    dif = resultados[elegido]["accuracy"] - resultados[BASELINE]["accuracy"]
+    aciertos_extra = int(round(dif * len(test)))
+    nota = {"aciertos_extra": aciertos_extra, "significativa": aciertos_extra >= 5}
 
     # Reentrenar el elegido con TODAS las semanas etiquetadas para predecir el futuro.
     final = candidatos()[elegido].fit(etiquetadas[FEATURES], etiquetadas[TARGET])
     modelos_log = {**modelos, elegido: final}
-    run_ids = registrar_en_mlflow(resultados, modelos_log, elegido, train, test)
+    run_ids = registrar_en_mlflow(resultados, modelos_log, elegido, train, test,
+                                  etiquetadas, preds_test, nota)
 
     ahora = datetime.now(timezone.utc).isoformat(timespec="seconds")
     pred = tabla_predicciones(test, preds_test, final, futuras, elegido, ahora)
@@ -300,10 +417,12 @@ def run() -> pd.DataFrame | None:
 
     for nombre, met in resultados.items():
         marca = " <- elegido" if nombre == elegido else ""
-        print(f"[modelo] {nombre:22s} accuracy={met['accuracy']:.3f} f1={met['f1_macro']:.3f}{marca}")
-    gana = resultados[elegido]["accuracy"] > resultados[BASELINE]["accuracy"]
-    print(f"[modelo] train={len(train)} test={len(test)} filas | "
-          f"{'SUPERA' if gana else 'NO supera'} a la línea base")
+        cv = met.get("cv_accuracy")
+        cvtxt = f" cv={cv:.3f}" if cv is not None else ""
+        print(f"[modelo] {nombre:22s} acc={met['accuracy']:.3f} f1={met['f1_macro']:.3f}{cvtxt}{marca}")
+    sig = "SÍ es significativa" if nota["significativa"] else "NO es significativa (ruido, pocos datos)"
+    print(f"[modelo] train={len(train)} test={len(test)} | mejora vs baseline = "
+          f"{aciertos_extra} aciertos -> {sig}")
     print(f"[modelo] predicciones -> {io.target_name('gold.predicciones')} ({len(pred)} filas)")
     print(f"[modelo] métricas     -> {io.target_name('gold.metricas_modelo')}")
     print(pred[pred["tipo"] == "futura"][["semana", "combustible", "prediccion", "probabilidad"]]
