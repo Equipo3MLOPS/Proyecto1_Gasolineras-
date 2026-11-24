@@ -22,6 +22,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
@@ -38,6 +39,13 @@ _RE_IMAGE_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 _cache: dict[str, tuple[float, pd.DataFrame]] = {}
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
+
+# El Droplet tiene ~1 GB de RAM sin swap y decodificar una foto HEIC de 12 MP usa
+# ~135 MB. Varias conversiones a la vez agotaban la memoria (OOM, exit 137), así
+# que se convierte UNA foto a la vez en un hilo dedicado; las descargas pueden ir
+# en paralelo, pero acotadas para no saturar el SQL Warehouse.
+_conversor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="miniaturas")
+_descargas = threading.Semaphore(3)
 
 
 # ------------------------------------------------------------------ lectura --
@@ -192,13 +200,15 @@ def _bytes_originales(image_id: str, origen: str) -> bytes | None:
 
 
 def _a_jpeg(original: bytes, lado_max: int) -> bytes:
+    import pillow_heif
     from PIL import Image, ImageOps
-    from pillow_heif import register_heif_opener
 
-    register_heif_opener()
+    pillow_heif.register_heif_opener()
+    pillow_heif.options.DECODE_THREADS = 1  # menos memoria; el servidor tiene 1 CPU
     with Image.open(io.BytesIO(original)) as im:
-        im = ImageOps.exif_transpose(im).convert("RGB")
+        # reducir ANTES de rotar/convertir: mismo resultado y ~40 % menos memoria
         im.thumbnail((lado_max, lado_max))
+        im = ImageOps.exif_transpose(im).convert("RGB")
         salida = io.BytesIO()
         # sin `exif=` -> la miniatura NO lleva metadatos (ni el GPS exacto)
         im.save(salida, "JPEG", quality=80, optimize=True)
@@ -230,10 +240,12 @@ def miniatura(image_id: str) -> bytes | None:
         origen = _foto_origen(image_id)
         if not origen:
             return None
-        original = _bytes_originales(image_id, origen)
+        with _descargas:
+            original = _bytes_originales(image_id, origen)
         if not original:
             return None
-        jpg = _a_jpeg(original, lado)
+        jpg = _conversor.submit(_a_jpeg, original, lado).result()  # una a la vez
+        del original
         try:
             os.makedirs(settings.fotos_cache_dir, exist_ok=True)
             tmp = f"{ruta_cache}.{os.getpid()}.tmp"
