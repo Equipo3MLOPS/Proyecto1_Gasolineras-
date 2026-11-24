@@ -41,5 +41,13 @@ class Settings(BaseSettings):
     # segundos que se cachean las tablas oro en memoria (frescura vs. latencia)
     cache_ttl_seconds: int = 300
 
+    # --- Fotos para el mapa del dashboard (app/fotos.py, endpoints /fotos) ----
+    # bucket de plata, solo se usa si gold_mode == "s3"
+    silver_bucket: str = "cc3105-ag-869227452861-us-east-2-an"
+    # carpeta donde se guardan las miniaturas ya generadas (caché en disco)
+    fotos_cache_dir: str = "/tmp/fotos_cache"
+    # lado mayor (px) de la miniatura JPEG
+    miniatura_px: int = 900
+
 
 settings = Settings()

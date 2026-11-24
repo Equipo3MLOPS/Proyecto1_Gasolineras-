@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{
   --bg:#070b1e; --card:rgba(255,255,255,.045); --card-bd:rgba(255,255,255,.09);
@@ -90,6 +92,118 @@ footer a{color:var(--accent2);text-decoration:none}
 .btn:hover{border-color:var(--accent)}
 .muted-card{color:var(--mut);font-size:13px;padding:18px}
 @media(max-width:720px){.m-grid{grid-template-columns:1fr}}
+
+/* ===================== NUEVO: mapa de fotos (capa plata) ===================== */
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px}
+.kpi{padding:14px 16px}
+.kpi .v{font-family:'Space Grotesk';font-size:24px;font-weight:700;letter-spacing:-.5px}
+.kpi .v small{font-size:13px;color:var(--mut);font-weight:500;margin-left:2px}
+.kpi .l{color:var(--mut);font-size:12px;margin-top:2px}
+.mapa-panel{padding:16px}
+.mapa-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.filtros{display:flex;flex-wrap:wrap;gap:8px}
+.ftg{border:1px solid var(--card-bd);background:transparent;color:var(--mut);font-family:Inter;
+  font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px;cursor:pointer;transition:.2s;
+  display:inline-flex;align-items:center;gap:7px}
+.ftg:hover{color:var(--txt)}
+.ftg .n{font-size:11px;opacity:.75;font-weight:700}
+.ftg.on{color:#0b1020;background:var(--c,var(--accent2));border-color:transparent}
+.est-chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--txt);
+  background:rgba(124,108,255,.16);border:1px solid rgba(124,108,255,.4);padding:6px 8px 6px 12px;border-radius:999px}
+.est-chip button{border:0;background:rgba(255,255,255,.12);color:var(--txt);width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:12px;line-height:20px}
+.mapa-grid{display:grid;grid-template-columns:360px 1fr;gap:14px;height:580px}
+#mapa{border-radius:14px;overflow:hidden;border:1px solid var(--card-bd);background:#0b1024;min-height:300px}
+.lista-fotos{overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
+.lista-vacia{color:var(--mut);font-size:13px;padding:20px;text-align:center}
+.foto{display:flex;gap:12px;background:rgba(255,255,255,.035);border:1px solid var(--card-bd);border-radius:14px;
+  padding:9px;cursor:pointer;transition:border-color .2s,background .2s,transform .2s;flex-shrink:0}
+.foto:hover{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.06)}
+.foto.activa{border-color:var(--accent);background:rgba(124,108,255,.1)}
+.foto.rech{border-color:rgba(251,113,133,.35)}
+.fimg{width:84px;height:96px;border-radius:10px;flex-shrink:0;overflow:hidden;position:relative;
+  background:linear-gradient(100deg,rgba(255,255,255,.04) 30%,rgba(255,255,255,.1) 50%,rgba(255,255,255,.04) 70%);
+  background-size:300% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+.fimg img{width:100%;height:100%;object-fit:cover;object-position:50% 8%;opacity:0;transition:opacity .4s;display:block}
+.fimg img.ok{opacity:1}
+.fimg .sin{position:absolute;inset:0;display:grid;place-items:center;font-size:22px;color:var(--mut)}
+.fimg .zoom{position:absolute;right:5px;bottom:5px;width:22px;height:22px;border-radius:7px;display:grid;place-items:center;
+  background:rgba(7,11,30,.75);font-size:11px;opacity:0;transition:.2s}
+.foto:hover .fimg .zoom{opacity:1}
+.fbody{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.ftop{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px}
+.fprecio{font-family:'Space Grotesk';font-size:20px;font-weight:700;letter-spacing:-.5px}
+.fprecio small{font-size:11px;color:var(--mut);font-weight:500;margin-left:2px}
+.fmeta{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fuels{display:flex;gap:5px;flex-wrap:wrap}
+.fchip{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;color:#0b1020;background:var(--c)}
+.rchip{font-size:11px;font-weight:600;color:var(--sube);background:rgba(251,113,133,.12);padding:2px 8px;border-radius:7px;align-self:flex-start}
+/* leaflet en tema oscuro */
+.leaflet-container{font-family:Inter,system-ui,sans-serif;background:#0b1024}
+.tiles-oscuras{filter:invert(1) hue-rotate(200deg) brightness(.82) contrast(.92) saturate(.55)}
+.leaflet-bar a,.leaflet-bar a:hover{background:#11173a;color:var(--txt);border-color:var(--card-bd)}
+.leaflet-control-attribution{background:rgba(7,11,30,.75)!important;color:var(--mut)!important}
+.leaflet-control-attribution a{color:var(--accent2)!important}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0f1430;color:var(--txt);border:1px solid var(--card-bd);box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.leaflet-popup-content{margin:14px 16px}
+.leaflet-container a.leaflet-popup-close-button{color:var(--mut)}
+.leaflet-tooltip{background:#0f1430;color:var(--txt);border:1px solid var(--card-bd);box-shadow:none}
+.leaflet-tooltip:before{display:none}
+.pop{min-width:230px}
+.pop-k{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1.4px}
+.pop-p{font-family:'Space Grotesk';font-size:24px;font-weight:700;margin:4px 0 2px}
+.pop-p small{font-size:12px;color:var(--mut);font-weight:500}
+.pop-m{font-size:12px;color:var(--mut)}
+.pop-thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:10px 0}
+.pop-thumbs img{width:100%;aspect-ratio:3/4;object-fit:cover;object-position:50% 8%;border-radius:7px;cursor:zoom-in;background:rgba(255,255,255,.06)}
+.pop a{color:var(--accent2);text-decoration:none;font-size:12px;font-weight:600}
+@media(max-width:860px){
+  .mapa-grid{grid-template-columns:1fr;height:auto}
+  #mapa{height:340px;order:-1}
+  .lista-fotos{max-height:440px}
+}
+
+/* ===================== NUEVO: tabla de modelos y calidad ===================== */
+.tabla-wrap{overflow-x:auto}
+table.tm{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+.tm th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:right;padding:10px 12px;border-bottom:1px solid var(--card-bd)}
+.tm th:first-child,.tm td:first-child{text-align:left}
+.tm td{padding:11px 12px;text-align:right;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+.tm tr.eleg td{background:rgba(124,108,255,.1)}
+.tm tr.eleg td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:1px}
+.tag.e{background:rgba(124,108,255,.22);color:#c4bcff}
+.tag.b{background:rgba(148,163,184,.16);color:var(--mant)}
+.cal-grid{display:grid;grid-template-columns:300px 1fr;gap:22px}
+.cal-big{font-family:'Space Grotesk';font-size:40px;font-weight:700;letter-spacing:-1px}
+.cal-big .q{font-size:18px;color:var(--mut);font-weight:500}
+.stack{display:flex;height:10px;border-radius:99px;overflow:hidden;margin:14px 0 10px;background:rgba(255,255,255,.06)}
+.stack i{display:block;height:100%;width:0;transition:width 1.1s cubic-bezier(.2,.8,.2,1)}
+.motivos{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.motivos li{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--mut)}
+.motivos b{color:var(--txt)}
+.rech-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));align-content:start}
+@media(max-width:720px){.cal-grid{grid-template-columns:1fr}}
+
+/* ===================== NUEVO: visor de foto ===================== */
+.lb{position:fixed;inset:0;z-index:5000;background:rgba(3,6,18,.86);backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;padding:20px}
+.lb.on{display:flex}
+.lb-box{display:grid;grid-template-columns:auto 300px;gap:0;max-width:960px;width:100%;max-height:92vh;
+  background:#0f1430;border:1px solid var(--card-bd);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.lb-img{background:#060a1a;display:grid;place-items:center;min-height:300px;position:relative}
+.lb-img img{max-height:92vh;max-width:100%;display:block}
+.lb-info{padding:22px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.lb-info .pop-p{font-size:34px}
+.lb-row{display:flex;justify-content:space-between;font-size:13px;border-bottom:1px solid rgba(255,255,255,.06);padding:7px 0}
+.lb-row span:first-child{color:var(--mut)}
+.lb-x,.lb-nav{position:absolute;border:1px solid var(--card-bd);background:rgba(15,20,48,.9);color:var(--txt);
+  width:40px;height:40px;border-radius:12px;cursor:pointer;font-size:18px;display:grid;place-items:center}
+.lb-x{top:16px;right:16px}
+.lb-nav.prev{left:16px;top:50%;transform:translateY(-50%)}
+.lb-nav.next{right:16px;top:50%;transform:translateY(-50%)}
+.lb-nav:hover,.lb-x:hover{border-color:var(--accent)}
+@media(max-width:760px){.lb-box{grid-template-columns:1fr;overflow-y:auto}.lb-img img{max-height:60vh}}
 </style>
 </head>
 <body>
@@ -116,6 +230,21 @@ footer a{color:var(--accent2);text-decoration:none}
     <div class="grid" id="pred"></div>
   </section>
 
+  <section class="sect" id="sec-mapa">
+    <h2>Mapa de fotos · dónde se tomó cada lectura</h2>
+    <div class="kpis" id="kpis-fotos"></div>
+    <div class="panel mapa-panel">
+      <div class="mapa-bar">
+        <div class="filtros" id="filtros-fotos"></div>
+        <div id="filtro-estacion"></div>
+      </div>
+      <div class="mapa-grid">
+        <div class="lista-fotos" id="lista-fotos"><div class="lista-vacia">Cargando fotos…</div></div>
+        <div id="mapa"></div>
+      </div>
+    </div>
+  </section>
+
   <section class="sect">
     <h2>Histórico semanal (Q/galón)</h2>
     <div class="panel">
@@ -127,12 +256,29 @@ footer a{color:var(--accent2);text-decoration:none}
   <section class="sect">
     <h2>Modelo de predicción</h2>
     <div class="panel" id="modelo"><div class="muted-card">Cargando métricas…</div></div>
+    <div class="panel tabla-wrap" id="modelos-tabla" style="margin-top:16px"><div class="muted-card">Cargando modelos evaluados…</div></div>
+  </section>
+
+  <section class="sect">
+    <h2>Calidad de datos · fotos procesadas</h2>
+    <div class="panel" id="calidad"><div class="muted-card">Cargando…</div></div>
   </section>
 
   <footer>
     <span id="foot">Datos: capa oro (Databricks)</span>
-    <span><button class="btn" onclick="cargarTodo()">↻ Actualizar</button> &nbsp; <a href="/docs">Ver API /docs →</a></span>
+    <span><button class="btn" onclick="cargarTodo()">↻ Actualizar</button> &nbsp; <a href="/presentacion">Presentación →</a> &nbsp; <a href="/docs">Ver API /docs →</a></span>
   </footer>
+</div>
+
+<!-- visor de foto (nuevo) -->
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Foto del surtidor">
+  <button class="lb-x" onclick="cerrarVisor()" aria-label="Cerrar">✕</button>
+  <button class="lb-nav prev" onclick="moverVisor(-1)" aria-label="Anterior">‹</button>
+  <button class="lb-nav next" onclick="moverVisor(1)" aria-label="Siguiente">›</button>
+  <div class="lb-box">
+    <div class="lb-img"><img id="lb-img" alt=""></div>
+    <div class="lb-info" id="lb-info"></div>
+  </div>
 </div>
 
 <script>
@@ -236,8 +382,220 @@ async function modelo(){
   }catch(e){cont.innerHTML='<div class="muted-card">No se pudieron cargar las métricas del modelo.</div>';}
 }
 
+/* =====================================================================
+   NUEVO: mapa de fotos (GET /fotos), visor, calidad de datos y tabla de
+   modelos. No cambia las funciones de arriba (resultado del modelo).
+   ===================================================================== */
+const FINFO=Object.fromEntries(FUELS.map(([k,n,cv])=>[k,{nombre:n,cv}]));
+const colorFuel=k=>cssv(FINFO[k]?FINFO[k].cv:"--mant");
+const nomFuel=k=>FINFO[k]?FINFO[k].nombre:"Sin identificar";
+const MOTIVOS={precio_fuera_de_rango:"Precio fuera de rango (Q20–Q60)",combustible_no_identificado:"Combustible no identificado",
+  venta_galones_ilegible:"Venta o galones ilegibles",fecha_nula:"Foto sin fecha",fecha_futura:"Fecha en el futuro"};
+const motivoTxt=m=>(m||"").split(";").filter(Boolean).map(x=>MOTIVOS[x]||x.replace(/_/g," ")).join(" · ");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const aFecha=f=>{const [y,m,d]=String(f).slice(0,10).split("-").map(Number);return new Date(y,m-1,d);};
+const fechaCorta=f=>f?aFecha(f).toLocaleDateString("es-GT",{day:"2-digit",month:"short",year:"numeric"}).replace(/\./g,""):"sin fecha";
+const mesAnio=f=>f?aFecha(f).toLocaleDateString("es-GT",{month:"short",year:"numeric"}).replace(/\./g,""):"—";
+const coord=(la,lo)=>la==null?"sin GPS":`${Number(la).toFixed(3)}, ${Number(lo).toFixed(3)}`;
+const gal=v=>v==null?"—":Number(v).toFixed(3);
+const unicas=fs=>new Set(fs.map(f=>f.image_id)).size;
+
+let FOTOS=[],VISTA=[],RECH=[],LB=[],lbIdx=0,fFuel="todos",fEst=null,mapa=null,capaEst=null,marcEst={};
+
+/* una tarjeta por foto: si una foto dio 2 lecturas (2 combustibles), se agrupan */
+function agrupar(filas){const m=new Map();
+  filas.forEach(f=>{const k=f.image_id+"|"+f.estado;
+    if(!m.has(k))m.set(k,{...f,fuels:[]});
+    const g=m.get(k);if(f.combustible&&!g.fuels.includes(f.combustible))g.fuels.push(f.combustible);});
+  return [...m.values()];}
+
+function filasFiltradas(){
+  return FOTOS.filter(f=>fFuel==="rechazadas"?f.estado==="rechazada"
+    :f.estado==="aceptada"&&(fFuel==="todos"||f.combustible===fFuel));}
+
+function estaciones(filas){const m=new Map();
+  filas.forEach(f=>{if(f.lat==null)return;
+    if(!m.has(f.ubicacion))m.set(f.ubicacion,{ub:f.ubicacion,lat:f.lat,lon:f.lon,filas:[]});
+    m.get(f.ubicacion).filas.push(f);});
+  return [...m.values()].map(e=>{const fotos=agrupar(e.filas),fechas=e.filas.map(f=>f.fecha).filter(Boolean).sort();
+    return {...e,fotos,n:fotos.length,ult:fotos[0],desde:fechas[0],hasta:fechas[fechas.length-1]};});}
+
+function chipsFuel(f){return f.fuels.length
+  ?f.fuels.map(k=>`<span class="fchip" style="--c:${colorFuel(k)}">${esc(nomFuel(k))}</span>`).join("")
+  :`<span class="fchip" style="--c:${cssv("--mant")}">Sin identificar</span>`;}
+
+function imgTag(f){return f.imagen_url
+  ?`<img src="${esc(f.imagen_url)}" alt="Foto ${esc(f.image_id)}" loading="lazy" onload="this.classList.add('ok');this.parentNode.style.animation='none'" onerror="fotoError(this)">`
+  :'<span class="sin">📷</span>';}
+function fotoError(img){const p=img.parentNode;p.style.animation="none";img.remove();p.insertAdjacentHTML("afterbegin",'<span class="sin">📷</span>');}
+
+function cardHTML(f,i,origen){
+  const rech=f.estado==="rechazada";
+  const alClic=origen==="lista"?`enfocarFoto(${i})`:`verFotos('${origen}',${i})`;
+  return `<div class="foto${rech?" rech":""}" data-i="${i}" onclick="${alClic}">
+    <div class="fimg" onclick="event.stopPropagation();verFotos('${origen}',${i})" title="Ver foto">${imgTag(f)}<span class="zoom">⤢</span></div>
+    <div class="fbody">
+      <div class="ftop"><span class="fprecio">${money(f.precio_q_galon)}<small>/gal</small></span><span class="fuels">${chipsFuel(f)}</span></div>
+      <div class="fmeta">${fechaCorta(f.fecha)}${f.hora?" · "+f.hora:""}</div>
+      <div class="fmeta">${money(f.esta_venta)} · ${gal(f.galones)} gal</div>
+      ${rech?`<span class="rchip">⚠ ${esc(motivoTxt(f.motivo_rechazo))}</span>`:""}
+    </div></div>`;}
+
+function kpis(){
+  const ac=FOTOS.filter(f=>f.estado==="aceptada"),fechas=ac.map(f=>f.fecha).filter(Boolean).sort(),u=ac[0];
+  const items=[
+    [`${unicas(ac)}`,`fotos analizadas · ${ac.length} lecturas`],
+    [`${new Set(ac.map(f=>f.ubicacion)).size}`,"gasolineras en el mapa"],
+    [`${mesAnio(fechas[0])} <small>→</small> ${mesAnio(fechas[fechas.length-1])}`,"periodo cubierto"],
+    [u?`${money(u.precio_q_galon)}<small>/gal</small>`:"—",u?`última lectura · ${nomFuel(u.combustible)} · ${fechaCorta(u.fecha)}`:"última lectura"]];
+  document.getElementById("kpis-fotos").innerHTML=items.map(([v,l],i)=>
+    `<div class="card kpi" style="animation-delay:${i*.06}s"><div class="v"${i===2?' style="font-size:19px;padding-top:4px"':""}>${v}</div><div class="l">${esc(l)}</div></div>`).join("");}
+
+function filtros(){
+  const cont=document.getElementById("filtros-fotos"),ac=FOTOS.filter(f=>f.estado==="aceptada"),re=FOTOS.filter(f=>f.estado==="rechazada");
+  const defs=[["todos","Todas",cssv("--accent2"),unicas(ac)],
+    ...FUELS.map(([k,n,cv])=>[k,n,cssv(cv),unicas(ac.filter(f=>f.combustible===k))])];
+  if(re.length)defs.push(["rechazadas","⚠ Rechazadas",cssv("--sube"),unicas(re)]);
+  cont.innerHTML="";
+  defs.forEach(([k,n,c,num])=>{const b=document.createElement("button");
+    b.className="ftg"+(k===fFuel?" on":"");b.style.setProperty("--c",c);
+    b.innerHTML=`${esc(n)} <span class="n">${num}</span>`;
+    b.onclick=()=>{fFuel=k;fEst=null;filtros();renderFotos(true);};
+    cont.appendChild(b);});}
+
+function initMapa(){
+  if(mapa)return true;
+  if(typeof L==="undefined"){document.getElementById("mapa").innerHTML='<div class="lista-vacia">No se pudo cargar el mapa.</div>';return false;}
+  mapa=L.map("mapa",{scrollWheelZoom:false}).setView([14.6,-90.5],11);
+  // OpenStreetMap (sin API key) oscurecido por CSS para el tema del dashboard
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,className:"tiles-oscuras",
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(mapa);
+  capaEst=L.layerGroup().addTo(mapa);
+  mapa.on("click",()=>mapa.scrollWheelZoom.enable());           // zoom con rueda solo tras hacer clic
+  mapa.getContainer().addEventListener("mouseleave",()=>mapa.scrollWheelZoom.disable());
+  return true;}
+
+function popupHTML(e){
+  const u=e.ult;
+  const thumbs=e.fotos.slice(0,8).map((f,j)=>`<img src="${esc(f.imagen_url)}" alt="Foto ${esc(f.image_id)}" loading="lazy" onclick="verEstacion('${esc(e.ub)}',${j})" onerror="this.style.visibility='hidden'">`).join("");
+  return `<div class="pop"><div class="pop-k">Gasolinera · ${coord(e.lat,e.lon)}</div>
+    <div class="pop-p">${money(u.precio_q_galon)} <small>/gal · ${esc(nomFuel(u.combustible))}</small></div>
+    <div class="pop-m">Última lectura: ${fechaCorta(u.fecha)}${u.hora?" · "+u.hora:""}</div>
+    <div class="pop-m">${e.n} foto${e.n>1?"s":""} · ${fechaCorta(e.desde)} → ${fechaCorta(e.hasta)}</div>
+    <div class="pop-thumbs">${thumbs}</div>
+    <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank" rel="noopener">Abrir en Google Maps ↗</a></div>`;}
+
+function renderMapa(ajustar){
+  if(!initMapa())return;
+  capaEst.clearLayers();marcEst={};
+  const ests=estaciones(filasFiltradas()),rech=fFuel==="rechazadas";
+  ests.forEach(e=>{
+    const c=rech?cssv("--sube"):colorFuel(e.ult.combustible);
+    const m=L.circleMarker([e.lat,e.lon],{radius:6+Math.sqrt(e.n)*2.4,color:c,weight:1.5,fillColor:c,fillOpacity:.55})
+      .bindTooltip(`${e.n} foto${e.n>1?"s":""} · ${money(e.ult.precio_q_galon)}/gal`,{direction:"top",offset:[0,-8]})
+      .bindPopup(()=>popupHTML(e),{maxWidth:320});
+    m.on("click",()=>seleccionarEstacion(e.ub));
+    m.addTo(capaEst);marcEst[e.ub]={m,e};});
+  estiloMarcadores();
+  if(ajustar&&ests.length)mapa.fitBounds(L.latLngBounds(ests.map(e=>[e.lat,e.lon])),{padding:[40,40],maxZoom:15});}
+
+function estiloMarcadores(){Object.values(marcEst).forEach(({m,e})=>{const sel=e.ub===fEst;
+  m.setStyle({color:sel?"#ffffff":m.options.fillColor,weight:sel?3:1.5,fillOpacity:fEst&&!sel?.3:.55});if(sel)m.bringToFront();});}
+
+function chipEstacion(){const c=document.getElementById("filtro-estacion"),me=fEst&&marcEst[fEst];
+  c.innerHTML=me?`<span class="est-chip">📍 Gasolinera ${coord(me.e.lat,me.e.lon)} · ${me.e.n} foto${me.e.n>1?"s":""}
+    <button onclick="limpiarEstacion()" aria-label="Quitar filtro de gasolinera">✕</button></span>`:"";}
+
+function renderLista(){
+  const cont=document.getElementById("lista-fotos");
+  VISTA=agrupar(filasFiltradas().filter(f=>!fEst||f.ubicacion===fEst));
+  cont.innerHTML=VISTA.length?VISTA.map((f,i)=>cardHTML(f,i,"lista")).join(""):'<div class="lista-vacia">No hay fotos con este filtro.</div>';
+  cont.scrollTop=0;}
+
+function renderFotos(ajustar){renderLista();renderMapa(ajustar);chipEstacion();}
+function seleccionarEstacion(ub){fEst=ub;renderLista();estiloMarcadores();chipEstacion();}
+function limpiarEstacion(){fEst=null;renderLista();estiloMarcadores();chipEstacion();if(mapa)mapa.closePopup();}
+
+/* clic en una tarjeta: vuela a la gasolinera y abre su ficha (sin filtrar la lista) */
+function enfocarFoto(i){const f=VISTA[i];
+  document.querySelectorAll("#lista-fotos .foto").forEach(x=>x.classList.toggle("activa",+x.dataset.i===i));
+  const me=f&&marcEst[f.ubicacion];if(!me)return;
+  mapa.once("moveend",()=>me.m.openPopup());mapa.flyTo([f.lat,f.lon],Math.max(mapa.getZoom(),15),{duration:.8});}
+
+/* ---------- visor de foto ---------- */
+function verFotos(origen,i){LB=origen==="lista"?VISTA:RECH;abrirVisor(i);}
+function verEstacion(ub,j){const me=marcEst[ub];if(!me)return;LB=me.e.fotos;abrirVisor(j);}
+function abrirVisor(i){
+  if(!LB.length)return;lbIdx=(i+LB.length)%LB.length;const f=LB[lbIdx],rech=f.estado==="rechazada";
+  const img=document.getElementById("lb-img");img.style.opacity=.25;img.onload=()=>img.style.opacity=1;
+  img.src=f.imagen_url||"";img.alt="Foto "+f.image_id;
+  document.getElementById("lb-info").innerHTML=`
+    <div class="pop-k">${esc(f.image_id)} · ${rech?"rechazada":"aceptada"}</div>
+    <div class="pop-p">${money(f.precio_q_galon)} <small>/gal</small></div>
+    <div class="fuels">${chipsFuel(f)}</div>
+    ${rech?`<span class="rchip">⚠ ${esc(motivoTxt(f.motivo_rechazo))}</span>`:""}
+    <div style="margin-top:6px">
+      <div class="lb-row"><span>Fecha</span><span>${fechaCorta(f.fecha)}${f.hora?" · "+f.hora:""}</span></div>
+      <div class="lb-row"><span>Esta venta</span><span>${money(f.esta_venta)}</span></div>
+      <div class="lb-row"><span>Galones</span><span>${gal(f.galones)}</span></div>
+      <div class="lb-row"><span>Precio = venta ÷ galones</span><span>${money(f.precio_q_galon)}</span></div>
+      <div class="lb-row"><span>Gasolinera</span><span>${coord(f.lat,f.lon)}</span></div>
+    </div>
+    ${f.lat!=null?`<div class="pop"><a href="https://www.google.com/maps?q=${f.lat},${f.lon}" target="_blank" rel="noopener">Abrir en Google Maps ↗</a></div>`:""}
+    <div class="pop-m" style="margin-top:auto">${lbIdx+1} de ${LB.length} · usa ← → para navegar</div>`;
+  document.getElementById("lb").classList.add("on");}
+function cerrarVisor(){document.getElementById("lb").classList.remove("on");}
+function moverVisor(d){abrirVisor(lbIdx+d);}
+document.addEventListener("keydown",e=>{if(!document.getElementById("lb").classList.contains("on"))return;
+  if(e.key==="Escape")cerrarVisor();else if(e.key==="ArrowRight")moverVisor(1);else if(e.key==="ArrowLeft")moverVisor(-1);});
+document.getElementById("lb").addEventListener("click",e=>{if(e.target.id==="lb")cerrarVisor();});
+
+/* ---------- calidad de datos (aceptadas vs rechazadas en plata) ---------- */
+function calidad(){
+  const cont=document.getElementById("calidad"),ac=FOTOS.filter(f=>f.estado==="aceptada"),re=FOTOS.filter(f=>f.estado==="rechazada");
+  const nA=unicas(ac),nR=unicas(re),tot=nA+nR,pct=tot?nA/tot*100:0,dobles=ac.length-nA,mot={};
+  re.forEach(f=>(f.motivo_rechazo||"").split(";").filter(Boolean).forEach(m=>mot[m]=(mot[m]||0)+1));
+  RECH=agrupar(re);
+  cont.innerHTML=`<div class="cal-grid"><div>
+      <div class="cal-big">${pct.toFixed(1)}<span class="q">% aceptadas</span></div>
+      <div class="meta">${nA} de ${tot} fotos pasaron las reglas de calidad de la capa plata</div>
+      <div class="stack"><i style="background:var(--baja)"></i><i style="background:var(--sube)"></i></div>
+      <ul class="motivos"><li><span>✓ Aceptadas</span><b>${nA}</b></li>
+        ${Object.entries(mot).map(([m,n])=>`<li><span>⚠ ${esc(MOTIVOS[m]||m)}</span><b>${n}</b></li>`).join("")}</ul>
+      ${dobles>0?`<div class="meta" style="margin-top:14px">ℹ ${dobles} foto${dobles>1?"s":""} aportan 2 lecturas: el pipeline asignó dos combustibles con el mismo precio.</div>`:""}
+    </div>
+    <div class="rech-grid">${RECH.length?RECH.map((f,i)=>cardHTML(f,i,"rech")).join(""):'<div class="muted-card">Ninguna foto rechazada.</div>'}</div></div>`;
+  setTimeout(()=>{const s=cont.querySelectorAll(".stack i");if(s.length){s[0].style.width=pct+"%";s[1].style.width=(100-pct)+"%";}},150);}
+
+async function fotosCargar(){
+  try{const d=await get("/fotos?incluir_rechazadas=true&limit=5000");FOTOS=d.fotos||[];
+    if(fEst&&!FOTOS.some(f=>f.ubicacion===fEst))fEst=null;
+    kpis();filtros();renderFotos(true);calidad();
+  }catch(e){
+    document.getElementById("kpis-fotos").innerHTML="";
+    document.getElementById("lista-fotos").innerHTML='<div class="lista-vacia">No se pudieron cargar las fotos.</div>';
+    document.getElementById("calidad").innerHTML='<div class="muted-card">No se pudo cargar la calidad de datos.</div>';}}
+
+/* ---------- comparativa de todos los modelos evaluados ---------- */
+async function modelosTabla(){
+  const cont=document.getElementById("modelos-tabla");
+  try{const d=await get("/modelo/metricas"),ms=(d.modelos||[]).slice();
+    if(!ms.length)throw new Error("sin modelos");
+    ms.sort((a,b)=>(a.es_baseline===true)-(b.es_baseline===true)||Number(b.accuracy)-Number(a.accuracy));
+    const pct=v=>v==null||v===""?"—":(Number(v)*100).toFixed(1)+"%";
+    const NOM={baseline_persistencia:"Persistencia",regresion_logistica:"Regresión logística",arbol_decision:"Árbol de decisión",bosque_aleatorio:"Bosque aleatorio"};
+    const r=ms.find(m=>m.elegido===true)||ms[0],folds=(ms.find(m=>m.cv_folds)||{}).cv_folds;
+    cont.innerHTML=`<table class="tm"><thead><tr><th>Modelo evaluado</th><th>Exactitud</th><th>F1 macro</th><th>CV${folds?` (${Number(folds)} folds)`:""}</th><th>Súper</th><th>Regular</th><th>Diésel</th></tr></thead><tbody>
+      ${ms.map(m=>`<tr class="${m.elegido===true?"eleg":""}"><td>${esc(NOM[m.modelo]||m.modelo)}${m.elegido===true?'<span class="tag e">★ elegido</span>':""}${m.es_baseline===true?'<span class="tag b">línea base</span>':""}</td>
+        <td>${pct(m.accuracy)}</td><td>${pct(m.f1_macro)}</td>
+        <td>${m.cv_accuracy!=null?pct(m.cv_accuracy)+` <span style="color:var(--mut)">± ${(Number(m.cv_accuracy_std)*100).toFixed(1)}</span>`:"—"}</td>
+        <td>${pct(m.accuracy_super)}</td><td>${pct(m.accuracy_regular)}</td><td>${pct(m.accuracy_diesel)}</td></tr>`).join("")}
+      </tbody></table>
+      <div class="meta" style="margin-top:12px">Validación temporal · ${r.n_train??"?"} filas de entrenamiento y ${r.n_test??"?"} de prueba (${fechaCorta(r.semanas_test_desde)} → ${fechaCorta(r.semanas_test_hasta)}). Las columnas por combustible son la exactitud en ese combustible.</div>`;
+  }catch(e){cont.innerHTML='<div class="muted-card">No se pudieron cargar los modelos evaluados.</div>';}}
+
 async function cargarTodo(){
-  await Promise.all([health(),actual(),pred(),modelo()]);
+  await Promise.all([health(),actual(),pred(),modelo(),fotosCargar(),modelosTabla()]);
   await toggles();await historico();
   document.getElementById("foot").textContent="Datos: capa oro (Databricks) · "+new Date().toLocaleString("es-GT");
 }

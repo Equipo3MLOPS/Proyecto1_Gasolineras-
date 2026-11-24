@@ -31,7 +31,22 @@ Databricks (modelo) ─► S3 oro (gold.*)           la API NO toca S3:
 | GET | `/precios?combustible=&desde=&hasta=&limit=` | Histórico semanal con filtros |
 | GET | `/prediccion?combustible=` | Predicción de la semana siguiente |
 | GET | `/modelo/metricas` | Exactitud del modelo elegido vs. línea base |
+| GET | `/fotos?combustible=&desde=&hasta=&ubicacion=&incluir_rechazadas=&limit=` | Una lectura por foto (capa **plata**): fecha, precio, total, galones y GPS de la gasolinera |
+| GET | `/fotos/{image_id}/imagen` | Miniatura JPEG de la foto (sin EXIF), cacheada en disco |
+| GET | `/presentacion` | Presentación del jurado (copia de `presentacion/presentacion_jurado.html` en `app/static/presentacion.html`; al regenerarla hay que copiarla a ambos lados) |
 | GET | `/docs` | Documentación Swagger (automática) |
+
+### Mapa de fotos (endpoints `/fotos`)
+El dashboard (`/`) incluye un mapa con la gasolinera donde se tomó cada foto.
+Estos endpoints son **nuevos y aislados** (`app/fotos.py`): no cambian los
+endpoints de arriba, que usa el modelo.
+- Leen `silver.precios` y `silver.precios_rejected` con el mismo `GOLD_MODE`.
+- El GPS sale del id de estación (`ST_14p560_m90p463` → 14.560, -90.463),
+  redondeado a 3 decimales (~110 m): ubica la gasolinera, no la foto exacta.
+- La miniatura se arma desde el binario de `bronze.fotos_precios` (modo
+  `databricks`, con el mismo token; no necesita S3), se convierte de HEIC a
+  JPEG **sin metadatos** y se guarda en `FOTOS_CACHE_DIR` (por defecto
+  `/tmp/fotos_cache`). La primera vez tarda ~4 s por foto; luego es inmediata.
 
 ## Lo único que hay que conseguir: un token de Databricks
 El modo `databricks` necesita un **Personal Access Token (PAT)** del usuario:
@@ -58,6 +73,7 @@ la imagen se usa **uv** para instalar rápido y de forma reproducible.
 Con `GOLD_MODE=local` la API lee parquet de `local_gold/`. Para generarlos:
 ```bash
 python scripts/exportar_oro_local.py     # baja las tablas oro desde Databricks
+python scripts/exportar_plata_local.py   # plata + fotos para /fotos (--sin-fotos: solo tablas)
 cd api && uv venv && source .venv/bin/activate && uv pip install -r requirements.txt
 GOLD_MODE=local uvicorn app.main:app --port 8003
 ./tests/consultas_api.sh

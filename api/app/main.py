@@ -133,3 +133,74 @@ def modelo_metricas():
             "n_test": int(e["n_test"]),
         }
     return {"resumen": resumen, "modelos": _records(df)}
+
+
+# ---------------------------------------------------------------------------
+# Fotos de surtidor (capa Plata) — endpoints NUEVOS para el mapa del dashboard.
+# No modifican ninguno de los endpoints de arriba.
+# ---------------------------------------------------------------------------
+from fastapi.responses import Response  # noqa: E402
+
+from . import fotos as fotos_plata  # noqa: E402
+
+
+@app.get("/fotos", tags=["fotos"])
+def fotos(
+    combustible: Optional[str] = Query(None, description="diesel | regular | super | v_power"),
+    desde: Optional[str] = Query(None, description="fecha inicial YYYY-MM-DD (inclusive)"),
+    hasta: Optional[str] = Query(None, description="fecha final YYYY-MM-DD (inclusive)"),
+    ubicacion: Optional[str] = Query(None, description="id de estación, p. ej. ST_14p560_m90p463"),
+    incluir_rechazadas: bool = Query(False, description="incluir fotos que no pasaron calidad"),
+    limit: int = Query(1000, ge=1, le=5000, description="máximo de filas"),
+):
+    """Una lectura por foto: fecha, precio Q/galón, total, galones y ubicación GPS.
+
+    La ubicación sale del id de estación (GPS redondeado a 3 decimales, ~110 m).
+    `imagen_url` apunta a la miniatura de la foto.
+    """
+    if combustible and combustible not in FUELS:
+        raise HTTPException(422, f"combustible inválido; use uno de {FUELS}")
+    try:
+        filas = fotos_plata.observaciones(incluir_rechazadas)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"No se pudo leer la capa plata: {exc}") from exc
+    if combustible:
+        filas = [f for f in filas if f["combustible"] == combustible]
+    if desde:
+        filas = [f for f in filas if (f["fecha"] or "") >= desde]
+    if hasta:
+        filas = [f for f in filas if (f["fecha"] or "") <= hasta]
+    if ubicacion:
+        filas = [f for f in filas if f["ubicacion"] == ubicacion]
+    return {"total": len(filas), "mostrados": min(len(filas), limit), "limit": limit,
+            "fotos": filas[:limit]}
+
+
+@app.get("/fotos/{image_id}/imagen", tags=["fotos"],
+         responses={200: {"content": {"image/jpeg": {}}}})
+def foto_imagen(image_id: str):
+    """Miniatura JPEG de la foto (sin metadatos EXIF), cacheada en el servidor."""
+    try:
+        jpg = fotos_plata.miniatura(image_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"No se pudo obtener la foto {image_id}: {exc}") from exc
+    if jpg is None:
+        raise HTTPException(404, f"foto no encontrada: {image_id}")
+    return Response(content=jpg, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ---------------------------------------------------------------------------
+# Presentación del jurado — ruta NUEVA, servida igual que el dashboard (/).
+# `static/presentacion.html` es una copia de presentacion/presentacion_jurado.html
+# (la imagen Docker solo incluye api/app/; ver presentacion/web/README.md).
+# ---------------------------------------------------------------------------
+@app.get("/presentacion", include_in_schema=False)
+def presentacion():
+    """Presentación web del proyecto (HTML autocontenido, funciona sin internet)."""
+    ruta = os.path.join(_STATIC, "presentacion.html")
+    if not os.path.isfile(ruta):
+        raise HTTPException(404, "presentación no disponible")
+    return FileResponse(ruta)

@@ -9,6 +9,7 @@ npm install
 npm run dev                      # vista previa con recarga en http://localhost:5173
 VITE_API_URL=http://165.22.137.8:8003 VITE_REVISION=<porcentaje> npm run build
 cp dist/index.html ../presentacion_jurado.html
+cp dist/index.html ../../api/app/static/presentacion.html   # la sirve la API en /presentacion
 ```
 
 - `VITE_API_URL` dibuja el QR a `/prediccion?combustible=super` en las diapositivas 12 y 14 y la URL de `/docs`.

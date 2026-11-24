@@ -29,4 +29,13 @@ curl -s "$BASE_URL/prediccion?combustible=super" | jq_o_cat
 titulo "GET /modelo/metricas"
 curl -s "$BASE_URL/modelo/metricas" | jq_o_cat
 
+titulo "GET /fotos?combustible=super&limit=3  (lecturas por foto con GPS)"
+curl -s "$BASE_URL/fotos?combustible=super&limit=3" | jq_o_cat
+
+titulo "GET /fotos/{image_id}/imagen  (miniatura JPEG de la primera foto)"
+PRIMERA=$(curl -s "$BASE_URL/fotos?limit=1" | python3 -c 'import json,sys; f=json.load(sys.stdin)["fotos"]; print(f[0]["image_id"] if f else "")')
+if [ -n "$PRIMERA" ]; then
+  curl -s -o /dev/null -w "$PRIMERA -> HTTP %{http_code}, %{content_type}, %{size_download} bytes\n" "$BASE_URL/fotos/$PRIMERA/imagen"
+fi
+
 printf "\n\033[1;32mListo. Swagger en %s/docs\033[0m\n" "$BASE_URL"

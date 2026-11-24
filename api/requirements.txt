@@ -6,3 +6,6 @@ requests>=2.31
 pandas>=2.0
 pyarrow>=15
 pydantic-settings>=2.4
+# miniaturas de las fotos HEIC para el mapa (/fotos/{id}/imagen)
+pillow>=10.0
+pillow-heif>=0.15
