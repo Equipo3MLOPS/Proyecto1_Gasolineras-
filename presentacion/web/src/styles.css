@@ -169,3 +169,9 @@ body.print .canopy .sweep { display: none; }
   .canopy .sweep, .seg.power svg, .seg.power svg .lit { animation: none; }
   .progress { transition: none; }
 }
+/* PDF: sin sombras ni brillos difuminados (Vista Previa los dibuja como rectángulos) */
+body.print *, body.print *::before, body.print *::after { box-shadow: none !important; text-shadow: none !important; }
+body.print .seg svg, body.print .oro-line, body.print .rs-fill, body.print .py-row { filter: none !important; }
+body.print .pylon::after { display: none; }
+body.print .stage { background: var(--asfalto) !important; }
+body.print .canopy { background: linear-gradient(180deg, #24272b, #121315 70%, #0c0d0e) !important; }
